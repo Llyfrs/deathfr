@@ -1,43 +1,28 @@
+mod bot;
+
 use anyhow::Context as _;
-use poise::serenity_prelude::{ClientBuilder, GatewayIntents};
+use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
-use shuttle_serenity::ShuttleSerenity;
+use log;
 
-struct Data {} // User data, which is stored and accessible in all command invocations
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
 
-/// Responds with "world!"
-#[poise::command(slash_command)]
-async fn hello(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.say("world!").await?;
-    Ok(())
-}
+use crate::bot::Bot;
+
 
 #[shuttle_runtime::main]
-async fn main(#[shuttle_runtime::Secrets] secret_store: SecretStore) -> ShuttleSerenity {
+async fn serenity(
+    #[shuttle_runtime::Secrets] secrets: SecretStore,
+) -> shuttle_serenity::ShuttleSerenity {
     // Get the discord token set in `Secrets.toml`
-    let discord_token = secret_store
-        .get("DISCORD_TOKEN")
-        .context("'DISCORD_TOKEN' was not found")?;
+    let token = secrets.get("DISCORD_TOKEN").context("'DISCORD_TOKEN' was not found")?;
 
-    let framework = poise::Framework::builder()
-        .options(poise::FrameworkOptions {
-            commands: vec![hello()],
-            ..Default::default()
-        })
-        .setup(|ctx, _ready, framework| {
-            Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {})
-            })
-        })
-        .build();
+    // Set gateway intents, which decides what events the bot will be notified about
+    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-    let client = ClientBuilder::new(discord_token, GatewayIntents::non_privileged())
-        .framework(framework)
+    let client = Client::builder(&token, intents)
+        .event_handler(Bot)
         .await
-        .map_err(shuttle_runtime::CustomError::new)?;
+        .expect("Err creating client");
 
     Ok(client.into())
 }
