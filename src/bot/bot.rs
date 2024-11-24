@@ -4,12 +4,23 @@ use serenity::model::application::{Command, Interaction};
 use serenity::async_trait;
 use tracing::error;
 
-pub struct Bot;
+use crate::bot::commands::command::Commands;  // Import the trait
+use crate::bot::commands::reviveme::ReviveMe;
+pub struct Bot<>{
+    //commands: Vec<Box<dyn Commands>>,
+}
+
+impl Bot {
+    pub fn new() -> Self {
+        Self {
+            //commands: Vec::new(),
+        }
+    }
+}
 
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-
         info!("Message: {:?}", msg.content);
         if msg.content == "!hello" {
             if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
@@ -18,10 +29,18 @@ impl EventHandler for Bot {
         }
     }
     async fn ready(&self, ctx: Context, ready: Ready) {
+
         info!("{} is connected!", ready.user.name);
-        Command::create_global_command(&ctx.http, CreateCommand::new("hello").description("Says hello!"))
-            .await
-            .expect("Failed to register command");
+        let commands = vec![ReviveMe::new()];
+
+        for command in commands {
+            let command = command.register();
+            if let Err(e) = ctx.http.create_global_command(&command).await {
+                error!("Error creating command: {:?}", e);
+            }
+        }
+
+        //self.commands = commands.into_iter().map(|c| Box::new(c) as Box<dyn Commands>).collect();
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         info!("Interaction: {:?}", interaction);
