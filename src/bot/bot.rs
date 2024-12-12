@@ -43,6 +43,20 @@ impl EventHandler for Bot {
         //self.commands = commands.into_iter().map(|c| Box::new(c) as Box<dyn Commands>).collect();
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        info!("Interaction: {:?}", interaction);
+
+
+        match interaction {
+            Interaction::Command(ref command) => {
+                let command_name = command.data.name.as_str();
+                let command = match command_name {
+                    "reviveme" => ReviveMe::new(),
+                    _ => return,
+                };
+                command.action(ctx, interaction).await;
+            }
+            _ => {}
+        }
+
+        //info!("Interaction: {:?}", interaction);
     }
 }
