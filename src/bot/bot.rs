@@ -1,20 +1,51 @@
 use log::info;
-use serenity::all::{Context, CreateCommand, EventHandler, Message, Ready};
+use serenity::all::{Context, CreateCommand, EventHandler, GuildId, Message, Ready};
 use serenity::model::application::{Command, Interaction};
-use serenity::async_trait;
+use shuttle_runtime::async_trait;
+use std::cell::RefCell;
+use tokio::sync::Mutex;
 use tracing::error;
 
-use crate::bot::commands::command::Commands;  // Import the trait
+use crate::bot::commands::command::Commands; // Import the trait
 use crate::bot::commands::reviveme::ReviveMe;
-pub struct Bot<>{
-    //commands: Vec<Box<dyn Commands>>,
+use crate::torn_api::TornAPI;
+
+//**
+//  Holds all the required secrets for the bot to work
+// *
+#[derive(Debug)]
+pub struct Secrets {
+    pub revive_channel: u64,
+    pub revive_role: u64,
+    pub revive_faction_guild: u64,
+    pub revive_faction: u64,
+    pub owner_id: u64,
+}
+
+pub struct Bot {
+    commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>>,
+    pub(crate) torn_api: TornAPI,
+    secrets: Secrets,
 }
 
 impl Bot {
-    pub fn new() -> Self {
-        Self {
-            //commands: Vec::new(),
+    pub async fn new(secrets: Secrets) -> Self {
+        let commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>> = Mutex::new(Vec::new());
+
+        {// idk
+            let mut commands_guard = commands.lock().await;
+            commands_guard.push(Box::new(ReviveMe::new(secrets.revive_channel, secrets.revive_role))); // Initialize commands async
         }
+
+        Self {
+            commands,
+            secrets,
+            torn_api: TornAPI::new(vec![]),
+        }
+    }
+
+    pub fn set_secrets(&mut self, secrets: Secrets) {
+        self.secrets = secrets;
     }
 }
 
@@ -29,34 +60,42 @@ impl EventHandler for Bot {
         }
     }
     async fn ready(&self, ctx: Context, ready: Ready) {
-
         info!("{} is connected!", ready.user.name);
-        let commands = vec![ReviveMe::new()];
 
-        for command in commands {
-            let command = command.register();
-            if let Err(e) = ctx.http.create_global_command(&command).await {
-                error!("Error creating command: {:?}", e);
+        // Clears all the commands from the guild
+        let cmds = ctx
+            .http
+            .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
+            .await
+            .unwrap();
+        for cmd in cmds {
+            ctx.http
+                .delete_guild_command(GuildId::from(self.secrets.revive_faction_guild), cmd.id)
+                .await
+                .unwrap();
+        }
+
+        let mut commands = vec![];
+        {
+            // Acquire a lock to access the commands
+            let commands_guard = self.commands.lock().await;
+            for command in commands_guard.iter() {
+                let command = command.register();
+                commands.push(command);
             }
         }
 
-        //self.commands = commands.into_iter().map(|c| Box::new(c) as Box<dyn Commands>).collect();
+        ctx.http
+            .create_guild_commands(GuildId::from(self.secrets.revive_faction_guild), &commands)
+            .await
+            .unwrap();
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        let mut commands_guard = self.commands.lock().await;
 
-
-        match interaction {
-            Interaction::Command(ref command) => {
-                let command_name = command.data.name.as_str();
-                let command = match command_name {
-                    "reviveme" => ReviveMe::new(),
-                    _ => return,
-                };
-                command.action(ctx, interaction).await;
-            }
-            _ => {}
+        // Perform command processing in the current thread to avoid `Send` issues
+        for command in commands_guard.iter_mut() {
+            command.action(ctx.clone(), interaction.clone()).await;
         }
-
-        //info!("Interaction: {:?}", interaction);
     }
 }
