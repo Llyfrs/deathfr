@@ -36,7 +36,7 @@ impl TornAPI {
     /**
     Makes a request to the Torn API, using given url. It handles errors by waiting in case of rate limit exceeded, it alerts about invalid keys and panics in all other cases.
     */
-    pub async fn make_request(&self, url: &str) -> Result<Value, Box<dyn Error>> {
+    pub async fn make_request(&mut self, url: &str) -> Result<Value, Box<dyn Error>> {
         loop {
             let result = reqwest::get(url).await?.text().await?;
             let json: Value = serde_json::from_str(&result)?;
@@ -56,8 +56,13 @@ impl TornAPI {
                         "error invalid key of owner: {}",
                         self.keys[(self.key_used - 1) % self.keys.len()].owner
                     );
-                    panic!()
+
+                    self.keys_limits.remove(self.key_used - 1);
                 }
+            }
+
+            if self.keys_limits.len() == 0 {
+                panic!("No valid keys left");
             }
 
             return Ok(json);
@@ -110,21 +115,19 @@ impl TornAPI {
         self.make_request(&url).await
     }
 
-    pub async fn get_revives(&mut self, from: u64) -> Vec<ReviveEntry> {
+    pub async fn get_revives(&mut self, from: u64) -> Option<Vec<ReviveEntry>> {
         let mut revives = Vec::new();
 
-        let key = self.get_key().unwrap();
+        let key = self.get_key().ok()?;
 
         let url = format!(
             "https://api.torn.com/faction/?selections=revivesfull&from={}&key={}",
             from, key.key
         );
 
-        let json = self.make_request(&url).await.unwrap();
+        let json = self.make_request(&url).await.ok()?;
 
-        println!("Revives: {:?}", json);
-
-        let revives_json = json["revives"].as_object().unwrap();
+        let revives_json = json["revives"].as_object()?;
 
         for (id, data) in revives_json {
             revives.push(ReviveEntry {
@@ -171,6 +174,6 @@ impl TornAPI {
             });
         }
 
-        revives
+        Some(revives)
     }
 }

@@ -1,7 +1,8 @@
 use crate::database::structures::CollectionName;
+use crate::database::structures::DatabaseName;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ReviveEntry {
     pub id: String,
     pub timestamp: u64,
@@ -16,7 +17,7 @@ pub struct ReviveEntry {
     pub target_last_action: TargetLastAction,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TargetLastAction {
     pub status: String,
     pub timestamp: u64,
@@ -27,3 +28,5 @@ impl CollectionName for ReviveEntry {
         "revive"
     }
 }
+
+impl DatabaseName for ReviveEntry {}

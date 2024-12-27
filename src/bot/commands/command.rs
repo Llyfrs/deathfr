@@ -9,6 +9,9 @@ use std::future::Future;
 pub(crate) trait Commands: Send + Sync {
     fn register(&self) -> CreateCommand;
     async fn action(&mut self, ctx: Context, interaction: Interaction);
+    async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
+        true
+    }
 }
 
 pub async fn interaction_command<F, Fut>(interaction: Interaction, function: F)
@@ -20,7 +23,6 @@ where
         function(command).await;
     }
 }
-
 
 pub async fn interaction_button<F, Fut>(interaction: Interaction, function: F)
 where

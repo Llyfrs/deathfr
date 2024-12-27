@@ -11,7 +11,7 @@ use mongodb::bson::doc;
 use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
 
-use crate::torn_api::TornAPI;
+use crate::torn_api::{revive_monitor, TornAPI};
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_runtime::Secrets] secrets: SecretStore,
@@ -45,18 +45,14 @@ async fn serenity(
     }
 
     let api_key = torn_api::torn_api::APIKey {
-        key: "REDACTED".to_string(),
+        key: secrets
+            .get("TEST_API_KEY")
+            .context("'TEST_API_KEY' was not found")?,
         rate_limit: 100,
         owner: "owner".to_string(),
     };
 
     let mut api = TornAPI::new(vec![api_key]);
-
-    /*    let revives = api.get_revives(1735112864).await;
-
-    for revive in revives {
-        log::info!("Revive: {:?}", revive);
-    }*/
 
     let secret = Secrets {
         revive_channel: secrets
@@ -84,11 +80,27 @@ async fn serenity(
             .context("'OWNER_ID' was not found")?
             .parse()
             .unwrap(),
+        revive_faction_api_key: secrets
+            .get("REVIVE_FACTION_API_KEY")
+            .context("'REVIVE_FACTION_API_KEY' was not found")?,
+        test_api_key: secrets
+            .get("TEST_API_KEY")
+            .context("'TEST_API_KEY' was not found")?,
+        dev: secrets
+            .get("DEV")
+            .context("'DEV' was not found")?
+            .parse()
+            .unwrap(),
     };
+
+    if secret.dev {
+        log::info!("Running in dev mode");
+    }
+
+    tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone()));
 
     let mut bot = Bot::new(secret).await;
     bot.torn_api = api;
-
 
     // Get the discord token set in `Secrets.toml`
     let token = secrets
