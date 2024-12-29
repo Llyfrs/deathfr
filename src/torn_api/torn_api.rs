@@ -21,7 +21,7 @@ pub struct TornAPI {
     keys_limits: Vec<APIKey>,
     last_reset: i64,
     key_used: usize,
-    name : String,
+    name: String,
 }
 
 pub struct RunOutOfCallsError;
@@ -32,7 +32,7 @@ impl TornAPI {
             keys_limits: keys.clone(),
             key_used: 0,
             last_reset: chrono::Utc::now().timestamp(),
-            name : "TornAPI".to_string(),
+            name: "TornAPI".to_string(),
         }
     }
     pub fn set_name(&mut self, name: String) {
@@ -124,7 +124,6 @@ impl TornAPI {
     }
 
     pub async fn get_revives(&mut self, from: u64) -> Option<Vec<ReviveEntry>> {
-
         let mut revives = Vec::new();
 
         let key = self.get_key().ok()?;

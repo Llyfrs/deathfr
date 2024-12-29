@@ -24,16 +24,19 @@ async fn serenity(
     .await
     .expect("Error initializing database");
 
-
     let api_keys = Database::get_collection::<APIKey>().await.unwrap();
 
-    let mut api_keys = api_keys
+    let mut api_keys: Vec<torn_api::torn_api::APIKey> = api_keys
         .into_iter()
-        .map(|key| {
-            torn_api::torn_api::APIKey {
-                key: key.api_key,
-                rate_limit: 1,
-                owner: key.name,
+        .filter_map(|key| {
+            if key.valid {
+                Some(torn_api::torn_api::APIKey {
+                    key: key.api_key,
+                    rate_limit: 1,
+                    owner: key.name,
+                })
+            } else {
+                None
             }
         })
         .collect();
@@ -82,7 +85,6 @@ async fn serenity(
             .map(|x| x.trim().parse().unwrap())
             .collect(),
     };
-
 
     // let's waste only my API call for testing
     if secret.dev {

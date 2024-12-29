@@ -18,7 +18,6 @@ pub fn request_update() {
 ///
 /// TODO: Recreate log function form samwise (will need to be run from bot with context)
 pub async fn revive_monitor(api_key: String) {
-
     let mut api = TornAPI::new(vec![APIKey {
         key: api_key,
         rate_limit: 2,

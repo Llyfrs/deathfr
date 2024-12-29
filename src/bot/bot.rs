@@ -9,8 +9,8 @@ use tracing::error;
 
 use crate::bot::commands::command::Commands;
 use crate::bot::commands::contract::Contract;
-use crate::bot::commands::stats::Stats;
 use crate::bot::commands::report::Report;
+use crate::bot::commands::stats::Stats;
 // Import the trait
 use crate::bot::commands::reviveme::ReviveMe;
 use crate::torn_api::TornAPI;
@@ -33,13 +33,12 @@ pub struct Secrets {
 
 pub struct Bot {
     commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>>,
-    pub(crate) torn_api: Arc<Mutex<TornAPI>>,
+    pub(crate) torn_api: Arc<Mutex<TornAPI>>, // if we run out of API calls
     secrets: Secrets,
 }
 
 impl Bot {
-    pub async fn new(secrets: Secrets, torn_api : TornAPI) -> Self {
-
+    pub async fn new(secrets: Secrets, torn_api: TornAPI) -> Self {
         let torn_api = Arc::new(Mutex::new(torn_api));
 
         let commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>> = Mutex::new(Vec::new());
@@ -67,7 +66,6 @@ impl Bot {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-        info!("Message: {:?}", msg.content);
         if msg.content == "!hello" {
             if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
                 error!("Error sending message: {:?}", e);

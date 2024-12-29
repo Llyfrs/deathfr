@@ -238,12 +238,10 @@ impl Commands for Contract {
                                 format_time(contract.ended)
                             ))
                             .build();
-
                     }
 
                     request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
                     create_response(&ctx, command.clone(), message.clone()).await;
-
                 } else {
                     log::warn!("Invalid options structure for 'end' subcommand.");
                 }
@@ -302,6 +300,10 @@ impl Commands for Contract {
         }
 
         if let Interaction::Component(button) = interaction {
+            if button.data.custom_id != "next" && button.data.custom_id != "previous" {
+                return;
+            }
+
             let data = self.responses.get_mut(&button.message.id).unwrap();
             if button.user.id != data.user_id {
                 // Only original author can interact with the buttons on that specific message
@@ -327,9 +329,6 @@ impl Commands for Contract {
     async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
         match interaction {
             Interaction::Command(command) => {
-                log::info!("User ID: {}", command.user.id.get());
-                log::info!("Owner ID: {}", self.secrets.owner_id);
-
                 if self.secrets.admins.contains(&command.user.id.get()) {
                     true
                 } else {
@@ -424,7 +423,7 @@ fn format_time(time: u64) -> String {
     format!("<t:{}:f>", time)
 }
 
-async fn create_response(ctx: &Context, command: CommandInteraction, message: String) {
+pub async fn create_response(ctx: &Context, command: CommandInteraction, message: String) {
     command
         .create_response(
             &ctx.http,
