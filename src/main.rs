@@ -24,35 +24,19 @@ async fn serenity(
     .await
     .expect("Error initializing database");
 
-    /*    let keys : Vec<APIKey> = Database::get_collection().await.unwrap();
 
-    for key in keys {
-        log::info!("API Key: {:?}",
-            key.api_key
-        );
-    }*/
+    let api_keys = Database::get_collection::<APIKey>().await.unwrap();
 
-    let players: Vec<Player> = Database::get_collection_with_filter(Some(doc! {
-        "uid": 61399
-    }))
-    .await
-    .unwrap();
-
-    println!("Players: {:?}", players);
-
-    for player in players {
-        log::info!("Player: {:?}", player.name);
-    }
-
-    let api_key = torn_api::torn_api::APIKey {
-        key: secrets
-            .get("TEST_API_KEY")
-            .context("'TEST_API_KEY' was not found")?,
-        rate_limit: 100,
-        owner: "owner".to_string(),
-    };
-
-    let mut api = TornAPI::new(vec![api_key]);
+    let mut api_keys = api_keys
+        .into_iter()
+        .map(|key| {
+            torn_api::torn_api::APIKey {
+                key: key.api_key,
+                rate_limit: 1,
+                owner: key.name,
+            }
+        })
+        .collect();
 
     let secret = Secrets {
         revive_channel: secrets
@@ -91,7 +75,27 @@ async fn serenity(
             .context("'DEV' was not found")?
             .parse()
             .unwrap(),
+        admins: secrets
+            .get("ADMINS")
+            .context("'ADMINS' was not found")?
+            .split(',')
+            .map(|x| x.trim().parse().unwrap())
+            .collect(),
     };
+
+
+    // let's waste only my API call for testing
+    if secret.dev {
+        api_keys = vec![torn_api::torn_api::APIKey {
+            key: secret.test_api_key.clone(),
+            rate_limit: 100,
+            owner: "Test Key (Llyfr)".to_string(),
+        }];
+    }
+
+    let mut api = TornAPI::new(api_keys);
+
+    api.set_name("Deathfr".to_string());
 
     if secret.dev {
         log::info!("Running in dev mode");
@@ -99,8 +103,7 @@ async fn serenity(
 
     tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone()));
 
-    let mut bot = Bot::new(secret).await;
-    bot.torn_api = api;
+    let mut bot = Bot::new(secret, api).await;
 
     // Get the discord token set in `Secrets.toml`
     let token = secrets

@@ -1,12 +1,18 @@
 use crate::database::structures::{CollectionName, DatabaseName};
 use mongodb::bson::{doc, Document};
 use mongodb::error::{ErrorKind, WriteFailure};
-use mongodb::{error::Result, Client, Collection};
+use mongodb::options::FindOptions;
+use mongodb::{bson, error::Result, Client, Collection};
 use once_cell::sync::Lazy;
 use serde_json::{from_str, to_string};
 use serenity::futures::TryStreamExt;
 use tokio::sync::Mutex;
 
+/// Represents a MongoDB database and provides methods to interact with it
+///
+/// Implemented, so the connection is a static value that is then accessed by static methods
+///
+/// Needs to be initialized with `Database::init` before use
 pub struct Database;
 static DB_CONN: Lazy<Mutex<Option<Client>>> = Lazy::new(|| Mutex::new(None));
 static CONNECTION_URL: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -61,8 +67,22 @@ impl Database {
         Database::get_collection_with_filter(None).await
     }
 
-    pub async fn get_collection_with_filter<T>(
-        filter: Option<mongodb::bson::Document>,
+    pub async fn get_collection_with_filter<T>(filter: Option<Document>) -> Result<Vec<T>>
+    where
+        T: CollectionName
+            + serde::de::DeserializeOwned
+            + Unpin
+            + 'static
+            + DatabaseName
+            + Sync
+            + Send,
+    {
+        Database::get_collection_with_filter_and_options(filter, None).await
+    }
+
+    pub async fn get_collection_with_filter_and_options<T>(
+        filter: Option<Document>,
+        options: Option<FindOptions>,
     ) -> Result<Vec<T>>
     where
         T: CollectionName
@@ -87,10 +107,35 @@ impl Database {
         // Default to an empty filter if None is provided
         let filter = filter.unwrap_or_else(|| doc! {});
 
-        let cursor = collection.find(filter).await?;
+        let cursor = collection.find(filter).with_options(options).await?;
         let results: Vec<T> = cursor.try_collect().await?;
 
         Ok(results)
+    }
+
+    /// Returns the size of collection with applied filter, this is useful for pagination
+    /// # Arguments
+    /// * `filter` - A filter to apply to the collection
+    ///
+    /// # Returns
+    /// * `u64` - The size of the collection
+
+    pub async fn get_collection_size(filter: Option<Document>) -> Result<u64> {
+        // Get the database client
+        let client = Database::get().await.unwrap();
+
+        // Use the database name from the trait or fall back to "deathfr"
+        let db = client.database("deathfr");
+
+        // Get the collection name and fetch the documents
+        let collection: Collection<Document> = db.collection("contracts");
+
+        // Default to an empty filter if None is provided
+        let filter = filter.unwrap_or_else(|| doc! {});
+
+        let size = collection.count_documents(filter).await?;
+
+        Ok(size)
     }
 
     pub async fn insert_manny<T>(documents: Vec<T>) -> Result<()>
@@ -107,16 +152,19 @@ impl Database {
         let collection_name = T::collection_name();
         let collection = db.collection::<T>(&collection_name);
 
-        match collection.insert_many(documents).with_options(
-            mongodb::options::InsertManyOptions::builder()
-                .ordered(false) // If one fails, continue with the rest
-                .build(),
-        ).await {
+        match collection
+            .insert_many(documents)
+            .with_options(
+                mongodb::options::InsertManyOptions::builder()
+                    .ordered(false) // If one fails, continue with the rest
+                    .build(),
+            )
+            .await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 if let ErrorKind::InsertMany(ref insert_error) = *e.kind {
                     if let Some(write_errors) = &insert_error.write_errors {
-
                         log::error!("Write errors: {:?}", write_errors);
 
                         // Check if all errors are duplicate key errors (code 11000)
@@ -152,10 +200,33 @@ impl Database {
             Ok(_) => Ok(()),
             Err(e) => match *e.kind {
                 ErrorKind::Write(WriteFailure::WriteError(ref err)) if err.code == 11000 => Ok(()), // Ignore duplicate key errors
-                ErrorKind::Write(_) => Err(e.into()), // Handle other write errors
-                _ => Err(e.into()),                   // Handle other kinds of errors
+                ErrorKind::Write(_) => Err(e.into()),
+                _ => Err(e.into()),
             },
         }
+    }
+
+    pub async fn update<T>(document: T, filter: Document) -> Result<()>
+    where
+        T: CollectionName + serde::Serialize + Unpin + 'static + DatabaseName + Sync + Send,
+    {
+        // Get the database client
+        let client = Database::get().await.unwrap();
+
+        // Use the database name from the trait or fall back to "deathfr"
+        let db_name = T::database_name();
+        let db = client.database(&db_name);
+
+        // Get the collection name and fetch the documents
+        let collection_name = T::collection_name();
+        let collection = db.collection::<T>(&collection_name);
+
+        let doc = doc! { "$set": bson::to_document(&document)? };
+
+        // Perform the update
+        collection.update_one(filter, doc).await?;
+
+        Ok(())
     }
 
     pub async fn set_value<T>(key: &str, value: T) -> Result<()>

@@ -524,6 +524,7 @@ dependencies = [
  "log",
  "mongodb",
  "once_cell",
+ "rand",
  "reqwest 0.12.9",
  "serde",
  "serde_json",

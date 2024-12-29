@@ -2,27 +2,27 @@ use crate::bot::commands::command::{interaction_command, Commands};
 use crate::bot::{Bot, Secrets};
 use crate::torn_api;
 use crate::torn_api::TornAPI;
-use serenity::all::{ButtonStyle, ChannelId, Content, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage, EmbedMessageBuilding, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, UserId};
+use serenity::all::{
+    ButtonStyle, ChannelId, Content, Context, CreateButton, CreateCommand,
+    CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage, EmbedMessageBuilding,
+    InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, UserId,
+};
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
 use std::mem::forget;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct ReviveMe {
-    api: TornAPI,
+    api: Arc<Mutex<TornAPI>>,
     secrets: Secrets,
     responses: HashMap<UserId, Message>,
 }
 impl ReviveMe {
-    pub fn new(secrets: Secrets) -> Self {
-        let api_key = torn_api::torn_api::APIKey {
-            key: secrets.test_api_key.clone(),
-            rate_limit: 100,
-            owner: "Test Key (Llyfr)".to_string(),
-        };
-
+    pub fn new(secrets: Secrets, api : Arc<Mutex<TornAPI>>) -> Self {
         Self {
-            api: TornAPI::new(vec![api_key]),
+            api,
             secrets,
             responses: HashMap::new(),
         }
@@ -37,33 +37,18 @@ fn player_link(id: u64) -> String {
 #[async_trait]
 impl Commands for ReviveMe {
     fn register(&self) -> CreateCommand {
-        CreateCommand::new("reviveme").description("Ask for Lifeline for Revive")
-    }
-
-    async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
-        if !self.secrets.dev {
-            match interaction {
-                // IF I'm requesting revive and this is instance on server don't allow processing (This way I can test the command without sending ping to the faction server)
-                Interaction::Command(command) => {
-                    if command.user.id == UserId::from(self.secrets.owner_id) {
-                        return false;
-                    }
-                }
-                _ => return true,
-            }
-        };
-        true
+        CreateCommand::new("reviveme").description("Ask Lifeline for Revive")
     }
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
-                command.user.id; // This can be used to verify user :thumbsup:
 
-                let player = self
-                    .api
-                    .get_player_data(command.user.id.get())
-                    .await
-                    .unwrap();
+                // This could be an authorized function??
+                if command.data.name.as_str() != "reviveme" {
+                    return;
+                }
+
+                let player = self.api.lock().await.get_player_data(command.user.id.get()).await.unwrap();
 
                 if let Some(error) = player.get("error") {
                     log::info!("Error: {:?}", error);
@@ -83,8 +68,7 @@ impl Commands for ReviveMe {
                     return; // Leave the function
                 }
 
-
-                if player["status"]["state"].as_str().unwrap() != "Hospital" && !self.secrets.dev  {
+                if player["status"]["state"].as_str().unwrap() != "Hospital" && !self.secrets.dev {
                     command
                         .create_response(
                             &ctx.http,
@@ -134,19 +118,19 @@ impl Commands for ReviveMe {
                 self.responses.insert(command.user.id, message);
             }
             Interaction::Component(mut button) => {
-                button
-                    .create_response(
-                        &ctx.http,
-                        CreateInteractionResponse::UpdateMessage(
-                            CreateInteractionResponseMessage::new()
-                                .content("You have canceled your revive request")
-                                .components(vec![]),
-                        ),
-                    )
-                    .await
-                    .unwrap();
-
                 if button.data.custom_id == "cancel_revive" {
+                    button
+                        .create_response(
+                            &ctx.http,
+                            CreateInteractionResponse::UpdateMessage(
+                                CreateInteractionResponseMessage::new()
+                                    .content("You have canceled your revive request")
+                                    .components(vec![]),
+                            ),
+                        )
+                        .await
+                        .unwrap();
+
                     let mut message = self.responses.remove(&button.user.id).unwrap();
                     message
                         .edit(
@@ -161,5 +145,23 @@ impl Commands for ReviveMe {
             }
             _ => {}
         }
+    }
+
+    async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
+        if !self.secrets.dev {
+            match interaction {
+                // IF I'm requesting revive and this is instance on server don't allow processing (This way I can test the command without sending ping to the faction server)
+                Interaction::Command(command) => {
+                    if command.user.id == UserId::from(self.secrets.owner_id) {
+                        return false;
+                    }
+                }
+                _ => return true,
+            }
+        };
+        true
+    }
+    fn is_global(&self) -> bool {
+        true
     }
 }

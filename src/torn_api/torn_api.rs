@@ -15,11 +15,13 @@ pub struct APIKey {
     pub owner: String,
 }
 
+#[derive(Clone)]
 pub struct TornAPI {
     keys: Vec<APIKey>,
     keys_limits: Vec<APIKey>,
     last_reset: i64,
     key_used: usize,
+    name : String,
 }
 
 pub struct RunOutOfCallsError;
@@ -30,14 +32,20 @@ impl TornAPI {
             keys_limits: keys.clone(),
             key_used: 0,
             last_reset: chrono::Utc::now().timestamp(),
+            name : "TornAPI".to_string(),
         }
     }
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
 
-    /**
-    Makes a request to the Torn API, using given url. It handles errors by waiting in case of rate limit exceeded, it alerts about invalid keys and panics in all other cases.
-    */
+    ///
+    /// Makes a request to the Torn API, using given url. It handles errors by waiting in case of rate limit exceeded, it alerts about invalid keys and panics in all other cases.
+    ///
     pub async fn make_request(&mut self, url: &str) -> Result<Value, Box<dyn Error>> {
         loop {
+            let url = format!("{}&comment={}", url, self.name);
+
             let result = reqwest::get(url).await?.text().await?;
             let json: Value = serde_json::from_str(&result)?;
 
@@ -85,7 +93,7 @@ impl TornAPI {
 
             // If we have checked all keys and all of them are out of calls, we wait for the reset.
             if key_to_use == start_key {
-                thread::sleep(std::time::Duration::from_secs(max(
+                thread::sleep(Duration::from_secs(max(
                     60 - (chrono::Utc::now().timestamp() - self.last_reset),
                     0,
                 ) as u64));
@@ -116,6 +124,7 @@ impl TornAPI {
     }
 
     pub async fn get_revives(&mut self, from: u64) -> Option<Vec<ReviveEntry>> {
+
         let mut revives = Vec::new();
 
         let key = self.get_key().ok()?;
@@ -126,7 +135,6 @@ impl TornAPI {
         );
 
         let json = self.make_request(&url).await.ok()?;
-
         let revives_json = json["revives"].as_object()?;
 
         for (id, data) in revives_json {

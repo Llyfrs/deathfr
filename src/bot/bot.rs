@@ -3,10 +3,15 @@ use serenity::all::{Context, CreateCommand, EventHandler, GuildId, Message, Read
 use serenity::model::application::{Command, Interaction};
 use shuttle_runtime::async_trait;
 use std::cell::RefCell;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::error;
 
-use crate::bot::commands::command::Commands; // Import the trait
+use crate::bot::commands::command::Commands;
+use crate::bot::commands::contract::Contract;
+use crate::bot::commands::stats::Stats;
+use crate::bot::commands::report::Report;
+// Import the trait
 use crate::bot::commands::reviveme::ReviveMe;
 use crate::torn_api::TornAPI;
 
@@ -20,6 +25,7 @@ pub struct Secrets {
     pub revive_faction_guild: u64,
     pub revive_faction: u64,
     pub owner_id: u64,
+    pub admins: Vec<u64>,
     pub revive_faction_api_key: String,
     pub test_api_key: String,
     pub dev: bool,
@@ -27,24 +33,29 @@ pub struct Secrets {
 
 pub struct Bot {
     commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>>,
-    pub(crate) torn_api: TornAPI,
+    pub(crate) torn_api: Arc<Mutex<TornAPI>>,
     secrets: Secrets,
 }
 
 impl Bot {
-    pub async fn new(secrets: Secrets) -> Self {
-        let commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>> = Mutex::new(Vec::new());
+    pub async fn new(secrets: Secrets, torn_api : TornAPI) -> Self {
 
+        let torn_api = Arc::new(Mutex::new(torn_api));
+
+        let commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>> = Mutex::new(Vec::new());
         {
             // idk
             let mut commands_guard = commands.lock().await;
-            commands_guard.push(Box::new(ReviveMe::new(secrets.clone()))); // Initialize commands async
+            commands_guard.push(Box::new(ReviveMe::new(secrets.clone(), torn_api.clone())));
+            commands_guard.push(Box::new(Contract::new(secrets.clone(), torn_api.clone())));
+            commands_guard.push(Box::new(Stats::new(secrets.clone(), torn_api.clone())));
+            commands_guard.push(Box::new(Report::new()));
         }
 
         Self {
             commands,
             secrets,
-            torn_api: TornAPI::new(vec![]),
+            torn_api,
         }
     }
 
@@ -66,7 +77,7 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // Clears all the commands from the guild
+        // Clears all the commands from the guild (for cleanup when in development phase)
         let cmds = ctx
             .http
             .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
@@ -79,24 +90,22 @@ impl EventHandler for Bot {
                 .unwrap();
         }
 
-        let mut commands = vec![];
         {
             // Acquire a lock to access the commands
             let commands_guard = self.commands.lock().await;
             for command in commands_guard.iter() {
-                let command = command.register();
-                commands.push(command);
+                let cmd = command.register();
+
+                if command.is_global() {
+                    ctx.http.create_global_command(&cmd).await.unwrap();
+                }
+
+                ctx.http
+                    .create_guild_command(GuildId::from(self.secrets.revive_faction_guild), &cmd)
+                    .await
+                    .unwrap();
             }
         }
-
-        ctx.http
-            .create_guild_commands(GuildId::from(self.secrets.revive_faction_guild), &commands)
-            .await
-            .unwrap();
-
-        // takes up to 1 hour to update global commands
-        ctx.http.create_global_commands(&commands).await.unwrap();
-
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let mut commands_guard = self.commands.lock().await;
