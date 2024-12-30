@@ -15,7 +15,7 @@ use serenity::all::{
     ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
     Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, Interaction, Message, MessageId, ReactionType, UserId,
+    EditInteractionResponse, EmbedField, Interaction, Message, MessageId, ReactionType, UserId,
 };
 use serenity::async_trait;
 use serenity::builder::CreateCommandOption;
@@ -129,11 +129,26 @@ impl Commands for Contract {
 
                     let faction_id =
                         if let CommandDataOptionValue::Integer(value) = &sub_options[1].value {
-                            *value
+                            *value as u64
                         } else {
                             log::warn!("Missing or invalid 'faction_id' value.");
                             return;
                         };
+
+                    let faction_data = self
+                        .api
+                        .lock()
+                        .await
+                        .get_faction_data(faction_id)
+                        .await
+                        .unwrap();
+
+                    if let Some(error) = faction_data.get("error") {
+                        log::info!("Error: {:?}", error);
+                        create_response(&ctx, command.clone(), "Invalid faction ID".to_string())
+                            .await;
+                        return;
+                    }
 
                     log::info!(
                         "Processing create subcommand with contract_name: {} and faction_id: {}",
@@ -250,7 +265,6 @@ impl Commands for Contract {
             if sub_command == "list" {
                 log::info!("Processing list subcommand");
 
-                println!("{:?}", command.data.options[0].value);
                 if let CommandDataOption {
                     value: SubCommand(sub_options),
                     ..
@@ -291,8 +305,6 @@ impl Commands for Contract {
                             page: 1,
                         },
                     );
-
-                    log::info!("Message: {:?}", message);
                 } else {
                     log::warn!("Invalid options structure for 'list' subcommand.");
                 }
@@ -300,6 +312,8 @@ impl Commands for Contract {
         }
 
         if let Interaction::Component(button) = interaction {
+            log::info!("Processing button interaction");
+
             if button.data.custom_id != "next" && button.data.custom_id != "previous" {
                 return;
             }
@@ -332,6 +346,9 @@ impl Commands for Contract {
                 if self.secrets.admins.contains(&command.user.id.get()) {
                     true
                 } else {
+                    log::warn!("Unauthorized user: {}", command.user.id);
+                    log::warn!("Secret admins: {:?}", self.secrets.admins);
+
                     if !self.secrets.dev {
                         let message = MessageBuilder::new()
                             .push("You are not authorized to use this command.")
@@ -345,6 +362,29 @@ impl Commands for Contract {
             // Button interaction handles it's self in a way that only people authorized in command can interact with the buttons
             _ => true,
         }
+    }
+
+    fn help(&self) -> Option<Vec<EmbedField>> {
+        Some(
+            vec![
+                EmbedField::new(
+                    "/contract start",
+                    "Creates a new contract and immediately starts it. Takes `contract_name` and `faction_id` as arguments. \
+                           \nContract name is latter use in list so I recommend naming it something meaningful like served faction name + date. Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
+                    false,
+                ),
+                EmbedField::new(
+                    "/contract end",
+                    "Ends a contract. Takes `contract_id` as argument. Contract ID is returned when creating a contract.",
+                    false,
+                ),
+                EmbedField::new(
+                    "/contract list",
+                    format!("Lists all contracts. Takes `status` as argument. Status can be `active`, `ended`, or `all`. Contracts are separated in to pages by {}", PAGE_SIZE),
+                    false,
+                ),
+            ]
+        )
     }
 }
 

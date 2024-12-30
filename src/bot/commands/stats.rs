@@ -9,7 +9,7 @@ use mongodb::bson::doc;
 use serenity::all::FullEvent::Message;
 use serenity::all::{
     Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage, Interaction, MessageBuilder,
+    CreateInteractionResponseMessage, EmbedField, Interaction, MessageBuilder,
 };
 use serenity::async_trait;
 use std::os::linux::raw::stat;
@@ -121,5 +121,13 @@ impl Commands for Stats {
             }
             _ => false,
         }
+    }
+
+    fn help(&self) -> Option<Vec<EmbedField>> {
+        Some(vec![EmbedField::new(
+            "/stats",
+            "Get your personal reviving stats over the course of your career in Lifeline",
+            false,
+        )])
     }
 }

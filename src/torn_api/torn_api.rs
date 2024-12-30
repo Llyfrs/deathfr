@@ -123,6 +123,17 @@ impl TornAPI {
         self.make_request(&url).await
     }
 
+    pub async fn get_faction_data(&mut self, faction_id: u64) -> Result<Value, Box<dyn Error>> {
+        let key = self.get_key()?;
+
+        let url = format!(
+            "https://api.torn.com/faction/{}?selections=basic&key={}",
+            faction_id, key.key
+        );
+
+        self.make_request(&url).await
+    }
+
     pub async fn get_revives(&mut self, from: u64) -> Option<Vec<ReviveEntry>> {
         let mut revives = Vec::new();
 

@@ -1,14 +1,17 @@
 use log::info;
 use serenity::all::{Context, CreateCommand, EventHandler, GuildId, Message, Ready};
+use serenity::futures;
 use serenity::model::application::{Command, Interaction};
 use shuttle_runtime::async_trait;
 use std::cell::RefCell;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
 use tracing::error;
 
 use crate::bot::commands::command::Commands;
 use crate::bot::commands::contract::Contract;
+use crate::bot::commands::help::Help;
 use crate::bot::commands::report::Report;
 use crate::bot::commands::stats::Stats;
 // Import the trait
@@ -32,23 +35,24 @@ pub struct Secrets {
 }
 
 pub struct Bot {
-    commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>>,
-    pub(crate) torn_api: Arc<Mutex<TornAPI>>, // if we run out of API calls
+    commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,
+    pub(crate) torn_api: Arc<Mutex<TornAPI>>,
     secrets: Secrets,
 }
 
 impl Bot {
     pub async fn new(secrets: Secrets, torn_api: TornAPI) -> Self {
         let torn_api = Arc::new(Mutex::new(torn_api));
+        let commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>> =
+            Arc::new(Mutex::new(Vec::new()));
 
-        let commands: Mutex<Vec<Box<dyn Commands + Send + Sync>>> = Mutex::new(Vec::new());
         {
-            // idk
             let mut commands_guard = commands.lock().await;
             commands_guard.push(Box::new(ReviveMe::new(secrets.clone(), torn_api.clone())));
             commands_guard.push(Box::new(Contract::new(secrets.clone(), torn_api.clone())));
             commands_guard.push(Box::new(Stats::new(secrets.clone(), torn_api.clone())));
-            commands_guard.push(Box::new(Report::new()));
+            commands_guard.push(Box::new(Report::new(secrets.clone(), torn_api.clone())));
+            commands_guard.push(Box::new(Help::new(commands.clone(), secrets.clone())));
         }
 
         Self {
@@ -57,7 +61,6 @@ impl Bot {
             torn_api,
         }
     }
-
     pub fn set_secrets(&mut self, secrets: Secrets) {
         self.secrets = secrets;
     }

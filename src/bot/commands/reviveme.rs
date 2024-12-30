@@ -9,7 +9,7 @@ use serenity::all::Route::InteractionResponse;
 use serenity::all::{
     ButtonStyle, ChannelId, CommandInteraction, Content, Context, CreateButton, CreateCommand,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EditMessage, EmbedMessageBuilding, InstallationContext,
+    EditInteractionResponse, EditMessage, EmbedField, EmbedMessageBuilding, InstallationContext,
     InteractionContext, Message, MessageBuilder, MessageId, UserId,
 };
 use serenity::model::application::Interaction;
@@ -174,7 +174,7 @@ impl Commands for ReviveMe {
                             &ctx.http,
                             EditMessage::new()
                                 .content(format!(
-                                    "{} \n\n Revive request cancelled by user",
+                                    "{}\nRevive request cancelled by user",
                                     message.content
                                 ))
                                 .components(vec![]),
@@ -235,5 +235,12 @@ impl Commands for ReviveMe {
     }
     fn is_global(&self) -> bool {
         true
+    }
+    fn help(&self) -> Option<Vec<EmbedField>> {
+        Some(vec![EmbedField::new(
+            "/reviveme",
+            "Ask Lifeline for Revive",
+            false,
+        )])
     }
 }
