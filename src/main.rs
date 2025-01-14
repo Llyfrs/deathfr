@@ -42,6 +42,7 @@ async fn serenity(
         })
         .collect();
 
+
     let secret = Secrets {
         revive_channel: secrets
             .get("REVIVE_CHANNEL")
