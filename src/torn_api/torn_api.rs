@@ -44,6 +44,7 @@ impl TornAPI {
     ///
     pub async fn make_request(&mut self, url: &str) -> Result<Value, Box<dyn Error>> {
         loop {
+
             let url = format!("{}&comment={}", url, self.name);
 
             let result = reqwest::get(url).await?.text().await?;

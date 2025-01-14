@@ -1,7 +1,7 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::commands::contract::create_response;
 use crate::bot::Secrets;
-use crate::database::structures::ReviveEntry;
+use crate::database::structures::{ReviveEntry, Verification};
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson;
@@ -44,21 +44,44 @@ impl Commands for Stats {
 
                 let mut id = command.user.id.get();
 
+                let verification: Vec<Verification> = Database::get_collection_with_filter( Some(doc! {
+                    "discord_id": id as i64
+                })).await.unwrap();
+
+
+
+                let mut player_id = if verification.is_empty() {
+
+                    let player = self.api.lock().await.get_player_data(id).await.unwrap();
+
+                    if let Some(error) = player.get("error") {
+                        log::info!("Error: {:?}", error);
+                        create_response(&ctx, command, "You are not verified".to_string()).await;
+                        return; // Leave the function
+                    }
+
+                    Database::insert(Verification {
+                        discord_id: id,
+                        torn_player_id: player.get("player_id").unwrap().as_i64().unwrap() as u64,
+                        name : player.get("name").unwrap().as_str().unwrap().to_string(),
+                        expire_at: chrono::Utc::now() + chrono::Duration::days(1),
+                    }).await.unwrap();
+
+                    player.get("player_id").unwrap().as_i64().unwrap() as u64
+
+                } else {
+                    verification[0].torn_player_id
+                };
+
+
                 // I don't have any revives so I will be replaced by random player in dev mode
                 if self.secrets.dev && command.user.id.get() == self.secrets.owner_id {
-                    id = 2266703;
+                    player_id = 2266703;
                 }
 
-                let player = self.api.lock().await.get_player_data(id).await.unwrap();
-
-                if let Some(error) = player.get("error") {
-                    log::info!("Error: {:?}", error);
-                    create_response(&ctx, command, "You are not verified".to_string()).await;
-                    return; // Leave the function
-                }
 
                 let filter = doc! {
-                    "reviver_id": player.get("player_id").unwrap().as_i64().unwrap()
+                    "reviver_id": player_id as i64
                 };
 
                 let revives: Vec<ReviveEntry> = Database::get_collection_with_filter(Some(filter))
@@ -110,8 +133,10 @@ impl Commands for Stats {
     }
 
     async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
+
         match interaction {
             Interaction::Command(command) => {
+
                 if let Some(id) = command.guild_id {
                     if id.get() == self.secrets.revive_faction_guild {
                         return true;

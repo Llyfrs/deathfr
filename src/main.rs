@@ -12,6 +12,7 @@ use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
 
 use crate::torn_api::{revive_monitor, TornAPI};
+
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_runtime::Secrets] secrets: SecretStore,

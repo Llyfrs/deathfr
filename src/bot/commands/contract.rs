@@ -11,12 +11,7 @@ use mongodb::bson::{doc, Document};
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 use serenity::all::CommandDataOptionValue::SubCommand;
-use serenity::all::{
-    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
-    Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EmbedField, Interaction, Message, MessageId, ReactionType, UserId,
-};
+use serenity::all::{ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType, Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EmbedField, Interaction, Message, MessageId, Permissions, ReactionType, UserId};
 use serenity::async_trait;
 use serenity::builder::CreateCommandOption;
 use serenity::utils::MessageBuilder;
@@ -25,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-const PAGE_SIZE: u64 = 1;
+const PAGE_SIZE: u64 = 5;
 
 pub struct Contract {
     api: Arc<Mutex<TornAPI>>,
@@ -103,6 +98,8 @@ impl Commands for Contract {
                         .required(true),
                     ),
             )
+
+
     }
 
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
@@ -349,13 +346,15 @@ impl Commands for Contract {
                     log::warn!("Unauthorized user: {}", command.user.id);
                     log::warn!("Secret admins: {:?}", self.secrets.admins);
 
-                    if !self.secrets.dev {
+/*                    if !self.secrets.dev {
                         let message = MessageBuilder::new()
                             .push("You are not authorized to use this command.")
                             .build();
 
                         create_response(&ctx, command.clone(), message.clone()).await;
-                    }
+                    }*/
+
+
                     false
                 }
             }

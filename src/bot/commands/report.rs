@@ -166,28 +166,20 @@ impl Commands for Report {
                     .await
                     .expect("Failed to create response");
 
-
                 // List of rewards is only for admins
                 if !self.secrets.admins.contains(&command.user.id.get()) {
                     return;
                 }
 
-
                 let mut reward_list = Vec::new();
 
                 for id in per_player.keys() {
-
                     // I could get the name, but latter when I talk it over I will
                     // probably also need the revive skill, now if the report has many players involved
                     // and it hits the rate limit, it will be a real problem as the API will freeze,
                     // here any everywhere else.
                     // TODO : I will probably need some type of cashing system for the skill the will be updated based on revive_monitor.
-                    let player_data = self
-                        .api
-                        .lock()
-                        .await
-                        .get_player_data(*id)
-                        .await;
+                    let player_data = self.api.lock().await.get_player_data(*id).await;
 
                     if player_data.is_err() {
                         continue;
@@ -195,21 +187,30 @@ impl Commands for Report {
 
                     let player_data = player_data.unwrap();
 
-
                     let player_name = player_data["name"].as_str().unwrap();
 
-                    let success = per_player[id].iter().filter(|r| r.result == "success").count();
+                    let success = per_player[id]
+                        .iter()
+                        .filter(|r| r.result == "success")
+                        .count();
                     let failed_counted = per_player[id].iter().filter(|r| r.chance < 50.0).count();
-                    reward_list.push(format!("* **{} [{}]** - ${}", player_name, id, format_with_commas((success * 900000 + failed_counted * 1000000) as u64)));
-
+                    reward_list.push(format!(
+                        "* **{} [{}]** - ${}",
+                        player_name,
+                        id,
+                        format_with_commas((success * 900000 + failed_counted * 1000000) as u64)
+                    ));
                 }
 
                 let embed = CreateEmbed::new()
                     .title("Rewards")
                     .description(reward_list.join("\n"));
 
-                command.channel_id.send_message(&ctx.http, CreateMessage::new().embed(embed)).await.unwrap();
-
+                command
+                    .channel_id
+                    .send_message(&ctx.http, CreateMessage::new().embed(embed))
+                    .await
+                    .unwrap();
             }
             _ => return,
         }
