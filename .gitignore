@@ -1,4 +1,5 @@
 /target
 .idea/
 .shuttle*
-Secrets*.toml
+Secrets.dev.toml
+Secrets.toml
