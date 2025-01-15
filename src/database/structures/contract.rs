@@ -19,6 +19,7 @@ pub struct Contract {
     pub(crate) contract_id: String,
     pub(crate) contract_name: String,
     pub(crate) faction_id: u64,
+    pub(crate) min_chance: u64,
     pub(crate) started: u64,
     pub(crate) ended: u64,
     pub(crate) status: Status,

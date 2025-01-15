@@ -71,6 +71,12 @@ impl Commands for Contract {
                         "The ID of the faction for the contract",
                     )
                     .required(true),
+                ).add_sub_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "min_chance",
+                        "The minimum chance of success to count for payment",
+                    ).required(true),
                 ),
             )
             .add_option(
@@ -132,6 +138,14 @@ impl Commands for Contract {
                             return;
                         };
 
+                    let min_chance =
+                        if let CommandDataOptionValue::Integer(value) = &sub_options[2].value {
+                            *value as u64
+                        } else {
+                            log::warn!("Missing or invalid 'min_chance' value.");
+                            return;
+                        };
+
                     let faction_data = self
                         .api
                         .lock()
@@ -158,6 +172,7 @@ impl Commands for Contract {
                         contract_id: generate_contract_id().await,
                         contract_name,
                         faction_id: faction_id as u64,
+                        min_chance: min_chance as u64,
                         started: Utc::now().timestamp() as u64,
                         ended: 0,
                         status: Status::Active,

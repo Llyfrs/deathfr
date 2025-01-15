@@ -95,7 +95,7 @@ impl Commands for Report {
 
                     if revive.result == "success" {
                         successful += 1;
-                    } else {
+                    } else if revive.chance > contract.min_chance as f32 {
                         failed += 1;
                     }
                 }
@@ -140,8 +140,13 @@ impl Commands for Report {
                     .field("", "", false)
                     .field("Successful Revives", successful.to_string(), true)
                     .field(
-                        "Failed",
+                        "Failed Counted",
                         (failed).to_string(),
+                        true,
+                    )
+                    .field(
+                        "Failed Ignored",
+                        (len - successful - failed).to_string(),
                         true,
                     )
                     .field(
@@ -193,13 +198,17 @@ impl Commands for Report {
                         .filter(|r| r.result == "success")
                         .count();
 
-                    let failed = per_player[id].iter().filter(|r| r.result == "failure").count();
+                    let failed_counted = per_player[id].iter().filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure").count();
+
+                    let failed =  per_player[id].len() - (failed_counted + success);
 
                     reward_list.push(format!(
-                        "* **{} [{}]** - ${}",
+                        "* **{} [{}]** - ${} (s: {}, f: {})",
                         player_name,
                         id,
-                        format_with_commas((success * 900000 + failed * 1000000) as u64)
+                        format_with_commas((success * 900000 + failed_counted * 1000000) as u64),
+                        success,
+                        failed_counted
                     ));
                 }
 
