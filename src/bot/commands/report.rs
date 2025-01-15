@@ -84,7 +84,7 @@ impl Commands for Report {
 
                 let mut per_player: HashMap<u64, Vec<ReviveEntry>> = HashMap::new();
                 let mut successful = 0;
-                let mut failed_counted = 0;
+                let mut failed = 0;
                 let mut len = revives.len();
 
                 for revive in revives {
@@ -95,8 +95,8 @@ impl Commands for Report {
 
                     if revive.result == "success" {
                         successful += 1;
-                    } else if revive.chance < 50.0 {
-                        failed_counted += 1;
+                    } else {
+                        failed += 1;
                     }
                 }
 
@@ -139,10 +139,9 @@ impl Commands for Report {
                     )
                     .field("", "", false)
                     .field("Successful Revives", successful.to_string(), true)
-                    .field("Charged Fails", failed_counted.to_string(), true)
                     .field(
                         "Failed",
-                        (len - successful - failed_counted).to_string(),
+                        (failed).to_string(),
                         true,
                     )
                     .field(
@@ -150,10 +149,10 @@ impl Commands for Report {
                         format!(
                             "${}",
                             format_with_commas(
-                                (successful * 900000 + failed_counted * 1000000) as u64
+                                (successful * 900000 + failed * 1000000) as u64
                             )
                         ),
-                        true,
+                        false,
                     );
 
                 command
@@ -193,12 +192,14 @@ impl Commands for Report {
                         .iter()
                         .filter(|r| r.result == "success")
                         .count();
-                    let failed_counted = per_player[id].iter().filter(|r| r.chance < 50.0).count();
+
+                    let failed = per_player[id].iter().filter(|r| r.result == "failure").count();
+
                     reward_list.push(format!(
                         "* **{} [{}]** - ${}",
                         player_name,
                         id,
-                        format_with_commas((success * 900000 + failed_counted * 1000000) as u64)
+                        format_with_commas((success * 900000 + failed * 1000000) as u64)
                     ));
                 }
 
