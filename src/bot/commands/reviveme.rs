@@ -6,17 +6,15 @@ use crate::torn_api;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
 use serenity::all::Route::InteractionResponse;
-use serenity::all::{
-    ButtonStyle, ChannelId, CommandInteraction, Content, Context, CreateButton, CreateCommand,
-    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    EditInteractionResponse, EditMessage, EmbedField, EmbedMessageBuilding, InstallationContext,
-    InteractionContext, Message, MessageBuilder, MessageId, UserId,
-};
+use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Content, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, EmbedMessageBuilding, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
+use std::fmt::format;
 use std::mem::forget;
 use std::sync::Arc;
+use serenity::all::Mention::Role;
+use serenity::builder::CreateAllowedMentions;
 use tokio::sync::Mutex;
 
 pub struct ReviveMe {
@@ -49,6 +47,9 @@ impl Commands for ReviveMe {
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
+
+                log::info!("User: {:?} is requesting revive", command.user.id);
+
                 // This could be an authorized function??
                 if command.data.name.as_str() != "reviveme" {
                     return;
@@ -126,24 +127,30 @@ impl Commands for ReviveMe {
                     .await
                     .expect("Failed to create response");
 
+
+                let allowed_mentions = CreateAllowedMentions::new()
+                    .all_roles(true)
+                    .all_users(true)
+                    .everyone(true);
+
+
                 let message = MessageBuilder::new()
                     .push("Revive request by")
-                    .push_named_link(
-                        format!(" {} [{}] ", user_name, user_id),
-                        player_link(user_id),
-                    )
-                    .role(self.secrets.revive_role)
+                    .push(format!(" [{} [{}]]({}) ", user_name, user_id, player_link(user_id)))
+                    .role(RoleId::from(self.secrets.revive_role))
                     .build();
 
-                let message = ChannelId::from(self.secrets.revive_channel)
-                    .send_message(
-                        &ctx.http,
-                        CreateMessage::new().content(message).button(
+                let message = ctx.http.send_message(
+                    ChannelId::from(self.secrets.revive_channel),
+                    Vec::new(), // Empty Vec<CreateAttachment> if no files are being sent
+                    &CreateMessage::new()
+                        .content(message)
+                        .button(
                             CreateButton::new("claim")
                                 .style(ButtonStyle::Success)
                                 .label("Claim"),
-                        ),
-                    )
+                        )
+                )
                     .await
                     .unwrap();
 

@@ -165,7 +165,7 @@ impl Database {
             Err(e) => {
                 if let ErrorKind::InsertMany(ref insert_error) = *e.kind {
                     if let Some(write_errors) = &insert_error.write_errors {
-                        log::error!("Write errors: {:?}", write_errors);
+                        log::warn!("Write errors: {:?}", write_errors);
 
                         // Check if all errors are duplicate key errors (code 11000)
                         if write_errors.iter().all(|err| err.code == 11000) {

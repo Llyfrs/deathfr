@@ -78,6 +78,8 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
+
+
         // Clears all the commands from the guild (for cleanup when in development phase)
         let cmds = ctx
             .http
