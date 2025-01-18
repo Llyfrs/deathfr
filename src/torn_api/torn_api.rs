@@ -85,7 +85,7 @@ impl TornAPI {
      */
     fn get_key(&mut self) -> Result<APIKey, Box<dyn Error>> {
         let mut key_to_use = self.key_used % self.keys.len();
-        let start_key = key_to_use;
+        let start_key = key_to_use % self.keys.len();
 
         // If the key to be used is already out of calls we move to the next one,until we find one that can be used.
         while self.keys_limits[key_to_use].rate_limit <= 0 {
