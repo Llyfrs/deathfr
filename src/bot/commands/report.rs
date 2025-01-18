@@ -14,6 +14,7 @@ use serenity::builder::{CreateCommandOption, CreateEmbed, CreateMessage};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use crate::bot::tools::get_player_cache::get_player_cache;
 
 pub(crate) struct Report {
     secrets: Secrets,
@@ -177,21 +178,19 @@ impl Commands for Report {
 
                 let mut reward_list = Vec::new();
 
+
                 for id in per_player.keys() {
                     // I could get the name, but latter when I talk it over I will
                     // probably also need the revive skill, now if the report has many players involved
                     // and it hits the rate limit, it will be a real problem as the API will freeze,
                     // here any everywhere else.
                     // TODO : I will probably need some type of cashing system for the skill the will be updated based on revive_monitor.
-                    let player_data = self.api.lock().await.get_player_data(*id).await;
+                    let player_data = match get_player_cache(*id, &mut *self.api.lock().await).await {
+                        Some(player) => player,
+                        None => continue,
+                    };
 
-                    if player_data.is_err() {
-                        continue;
-                    }
-
-                    let player_data = player_data.unwrap();
-
-                    let player_name = player_data["name"].as_str().unwrap();
+                    let player_name = player_data.name.clone();
 
                     let success = per_player[id]
                         .iter()
@@ -202,25 +201,40 @@ impl Commands for Report {
 
                     let failed =  per_player[id].len() - (failed_counted + success);
 
-                    reward_list.push(format!(
-                        "* **{} [{}]** - ${} (s: {}, f: {})",
-                        player_name,
-                        id,
-                        format_with_commas((success * 900000 + failed_counted * 1000000) as u64),
-                        success,
-                        failed_counted
+                    reward_list.push((
+                        (success * 900000 + failed_counted * 1000000) as u64, // Monetary value for sorting
+                        format!(
+                            "* **{} [{}]** - ${} (s: {}, f: {})",
+                            player_name,
+                            id,
+                            format_with_commas((success * 900000 + failed_counted * 1000000) as u64),
+                            success,
+                            failed_counted
+                        ),
                     ));
+                };
+
+                reward_list.sort_by(|a, b| b.0.cmp(&a.0));
+
+                let pages = reward_list.chunks(10).collect::<Vec<_>>();
+
+                for (i,page) in pages.iter().enumerate() {
+                    let embed = CreateEmbed::new()
+                        .title(format!("Rewards ({}/{})", i+1, pages.len()))
+                        .description(
+                            page
+                                .iter()
+                                .map(|(_, s)| s.as_str()) // Convert to &str if `s` is a `String`
+                                .collect::<Vec<_>>()
+                                .join("\n"),
+                        );
+
+                    command
+                        .channel_id
+                        .send_message(&ctx.http, CreateMessage::new().embed(embed))
+                        .await
+                        .unwrap();
                 }
-
-                let embed = CreateEmbed::new()
-                    .title("Rewards")
-                    .description(reward_list.join("\n"));
-
-                command
-                    .channel_id
-                    .send_message(&ctx.http, CreateMessage::new().embed(embed))
-                    .await
-                    .unwrap();
             }
             _ => return,
         }
