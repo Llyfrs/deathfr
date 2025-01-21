@@ -104,7 +104,7 @@ async fn serenity(
         log::info!("Running in dev mode");
     }
 
-    tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone()));
+    tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone(), secret.revive_faction));
 
     let mut bot = Bot::new(secret, api).await;
 

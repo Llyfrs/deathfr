@@ -135,18 +135,21 @@ impl TornAPI {
         self.make_request(&url).await
     }
 
-    pub async fn get_revives(&mut self, from: u64) -> Option<Vec<ReviveEntry>> {
+    pub async fn get_revives(&mut self, from: u64) -> Option<(Vec<ReviveEntry>, u64)> {
         let mut revives = Vec::new();
 
         let key = self.get_key().ok()?;
 
         let url = format!(
-            "https://api.torn.com/faction/?selections=revivesfull&from={}&key={}",
+            "https://api.torn.com/faction/?selections=revivesfull,basicfull&from={}&key={}",
             from, key.key
         );
 
         let json = self.make_request(&url).await.ok()?;
         let revives_json = json["revives"].as_object()?;
+
+
+        let faction_id = json["ID"].as_u64().unwrap();
 
         for (id, data) in revives_json {
             revives.push(ReviveEntry {
@@ -193,6 +196,6 @@ impl TornAPI {
             });
         }
 
-        Some(revives)
+        Some((revives, faction_id))
     }
 }
