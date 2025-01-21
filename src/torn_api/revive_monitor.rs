@@ -32,8 +32,6 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
     loop {
         let revives = api.get_revives(last_revive).await;
 
-        log::info!("Collecting revives starting from: {}", last_revive);
-
         match revives {
             None => {
                 log::error!("Failed to collect revives");
