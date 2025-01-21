@@ -1,9 +1,6 @@
-use crate::database::structures::ReviveEntry;
 use crate::database::Database;
 use crate::torn_api::torn_api::APIKey;
 use crate::torn_api::TornAPI;
-use chrono::format;
-use once_cell::sync::Lazy;
 use std::sync::atomic::AtomicBool;
 use std::sync::LazyLock;
 

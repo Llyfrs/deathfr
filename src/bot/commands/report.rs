@@ -86,7 +86,7 @@ impl Commands for Report {
                 let mut per_player: HashMap<u64, Vec<ReviveEntry>> = HashMap::new();
                 let mut successful = 0;
                 let mut failed = 0;
-                let mut len = revives.len();
+                let len = revives.len();
 
                 for revive in revives {
                     per_player

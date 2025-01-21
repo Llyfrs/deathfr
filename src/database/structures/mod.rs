@@ -10,7 +10,6 @@ mod player_cache;
 pub use api_key::APIKey;
 pub use contract::Contract;
 pub use contract::Status;
-pub use player::Player;
 pub use revive::ReviveEntry;
 pub use revive::TargetLastAction;
 pub use verification::Verification;

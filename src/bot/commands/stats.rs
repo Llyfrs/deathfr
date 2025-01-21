@@ -4,15 +4,12 @@ use crate::bot::Secrets;
 use crate::database::structures::{ReviveEntry, Verification};
 use crate::database::Database;
 use crate::torn_api::TornAPI;
-use mongodb::bson;
 use mongodb::bson::doc;
-use serenity::all::FullEvent::Message;
 use serenity::all::{
     Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EmbedField, Interaction, MessageBuilder,
+    CreateInteractionResponseMessage, EmbedField, Interaction,
 };
 use serenity::async_trait;
-use std::os::linux::raw::stat;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -42,7 +39,7 @@ impl Commands for Stats {
 
                 log::info!("Stats command");
 
-                let mut id = command.user.id.get();
+                let id = command.user.id.get();
 
                 let verification: Vec<Verification> = Database::get_collection_with_filter( Some(doc! {
                     "discord_id": id as i64

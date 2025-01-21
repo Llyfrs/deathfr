@@ -1,10 +1,8 @@
-use crate::bot::Bot;
 use serenity::all::{CommandInteraction, ComponentInteraction, Context, EmbedField};
 use serenity::builder::CreateCommand;
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::future::Future;
-use tracing::field::Field;
 
 #[async_trait]
 pub(crate) trait Commands: Send + Sync {

@@ -1,9 +1,7 @@
 use log::info;
-use serenity::all::{Context, CreateCommand, EventHandler, GuildId, Message, Ready};
-use serenity::futures;
-use serenity::model::application::{Command, Interaction};
+use serenity::all::{Context, EventHandler, GuildId, Message, Ready};
+use serenity::model::application::{Interaction};
 use shuttle_runtime::async_trait;
-use std::cell::RefCell;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

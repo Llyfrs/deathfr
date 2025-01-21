@@ -3,11 +3,10 @@ mod database;
 mod torn_api;
 
 use crate::bot::{Bot, Secrets};
-use crate::database::structures::{APIKey, Player};
+use crate::database::structures::APIKey;
 use crate::database::Database;
 use anyhow::Context as _;
 use log;
-use mongodb::bson::doc;
 use serenity::prelude::*;
 use shuttle_runtime::SecretStore;
 
@@ -106,7 +105,7 @@ async fn serenity(
 
     tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone(), secret.revive_faction));
 
-    let mut bot = Bot::new(secret, api).await;
+    let bot = Bot::new(secret, api).await;
 
     // Get the discord token set in `Secrets.toml`
     let token = secrets

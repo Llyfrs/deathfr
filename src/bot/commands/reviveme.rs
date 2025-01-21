@@ -1,19 +1,14 @@
-use crate::bot::commands::command::{interaction_command, Commands};
-use crate::bot::{Bot, Secrets};
+use crate::bot::commands::command::Commands;
+use crate::bot::Secrets;
 use crate::database::structures::Verification;
 use crate::database::Database;
-use crate::torn_api;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
-use serenity::all::Route::InteractionResponse;
-use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Content, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, EmbedMessageBuilding, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
+use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, Message, MessageBuilder, MessageId, RoleId, UserId};
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
-use std::fmt::format;
-use std::mem::forget;
 use std::sync::Arc;
-use serenity::all::Mention::Role;
 use serenity::builder::CreateAllowedMentions;
 use tokio::sync::Mutex;
 
@@ -154,13 +149,13 @@ impl Commands for ReviveMe {
                     .await
                     .unwrap();
 
-                let mut msg = command.get_response(&ctx.http).await.unwrap();
+                let msg = command.get_response(&ctx.http).await.unwrap();
 
                 self.responses.insert(command.user.id, message.clone());
                 self.cancellation.insert(message.id, command.clone());
             }
 
-            Interaction::Component(mut button) => {
+            Interaction::Component(button) => {
                 if button.data.custom_id == "cancel_revive" {
                     button
                         .create_response(
@@ -191,7 +186,7 @@ impl Commands for ReviveMe {
                 }
 
                 if button.data.custom_id == "claim" {
-                    let mut command = self.cancellation.remove(&button.message.id).unwrap();
+                    let command = self.cancellation.remove(&button.message.id).unwrap();
 
                     command
                         .edit_response(

@@ -1,14 +1,10 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::Secrets;
-use serenity::all::Event::MessageCreate;
-use serenity::all::FullEvent::Message;
 use serenity::all::{
     Context, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
     CreateInteractionResponseMessage, EmbedField, Interaction,
 };
 use serenity::async_trait;
-use serenity::utils::MessageBuilder;
-use std::cell::RefCell;
 use std::sync::Arc;
 use std::vec;
 use tokio::sync::Mutex;
