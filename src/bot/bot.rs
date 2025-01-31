@@ -76,14 +76,13 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-
-
         // Clears all the commands from the guild (for cleanup when in development phase)
         let cmds = ctx
             .http
             .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
             .await
             .unwrap();
+
         for cmd in cmds {
             ctx.http
                 .delete_guild_command(GuildId::from(self.secrets.revive_faction_guild), cmd.id)
@@ -101,10 +100,13 @@ impl EventHandler for Bot {
                     ctx.http.create_global_command(&cmd).await.unwrap();
                 }
 
+
                 ctx.http
                     .create_guild_command(GuildId::from(self.secrets.revive_faction_guild), &cmd)
                     .await
                     .unwrap();
+
+
             }
         }
     }

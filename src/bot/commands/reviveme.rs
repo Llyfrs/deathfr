@@ -4,7 +4,7 @@ use crate::database::structures::Verification;
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
-use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, Message, MessageBuilder, MessageId, RoleId, UserId};
+use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
@@ -38,6 +38,8 @@ fn player_link(id: u64) -> String {
 impl Commands for ReviveMe {
     fn register(&self) -> CreateCommand {
         CreateCommand::new("reviveme").description("Ask Lifeline for Revive")
+            .add_integration_type(InstallationContext::User)
+            .add_integration_type(InstallationContext::Guild)
     }
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
         match interaction {

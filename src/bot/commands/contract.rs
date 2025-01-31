@@ -6,7 +6,7 @@ use crate::torn_api::{request_update, TornAPI};
 use chrono::Utc;
 use mongodb::bson;
 use mongodb::bson::{doc, Document};
-use rand::distributions::Alphanumeric;
+use rand::distr::Alphanumeric;
 use rand::Rng;
 use serenity::all::CommandDataOptionValue::SubCommand;
 use serenity::all::{ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType, Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, EmbedField, Interaction, MessageId, ReactionType, UserId};
