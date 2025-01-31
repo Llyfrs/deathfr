@@ -1,5 +1,5 @@
 use crate::database::structures::{ReviveEntry, TargetLastAction};
-use log::error;
+use log::{error, log};
 use reqwest;
 use serde_json;
 use serde_json::Value;
@@ -141,13 +141,12 @@ impl TornAPI {
         let key = self.get_key().ok()?;
 
         let url = format!(
-            "https://api.torn.com/faction/?selections=revivesfull,basicfull&from={}&key={}",
+            "https://api.torn.com/faction/?selections=revivesfull,basic&from={}&key={}",
             from, key.key
         );
 
         let json = self.make_request(&url).await.ok()?;
         let revives_json = json["revives"].as_object()?;
-
 
         let faction_id = json["ID"].as_u64().unwrap();
 

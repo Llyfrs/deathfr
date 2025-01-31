@@ -16,6 +16,8 @@ pub fn request_update() {
 /// TODO: Recreate log function form samwise (will need to be run from bot with context)
 pub async fn revive_monitor(api_key: String, revive_faction: u64) {
 
+    println!("Starting revive monitor");
+
     let mut api = TornAPI::new(vec![APIKey {
         key: api_key,
         rate_limit: 2,
@@ -27,6 +29,7 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
     let mut last_revive: u64 = Database::get_value("last_revive").await.unwrap();
 
     loop {
+
         let revives = api.get_revives(last_revive).await;
 
         match revives {
