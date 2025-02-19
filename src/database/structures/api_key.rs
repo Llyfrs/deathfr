@@ -12,6 +12,7 @@ pub struct APIKey {
     pub(crate) last_updated: bson::DateTime,
     pub(crate) name: String,
     pub(crate) torn_id: i32,
+    #[serde(default)]
     pub(crate) valid: bool,
 }
 
