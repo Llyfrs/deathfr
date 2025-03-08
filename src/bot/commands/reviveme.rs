@@ -193,6 +193,20 @@ impl Commands for ReviveMe {
                         Some(command) => command,
                         None => {
                             log::error!("Failed to find command for message: {:?}  (probably two people interacting at the same time)", button.message.id);
+
+                            button
+                                .create_response(
+                                    &ctx.http,
+                                    CreateInteractionResponse::UpdateMessage(
+                                        CreateInteractionResponseMessage::new()
+                                            .content("Failed to claim revive request. Somebody probably claimed it bit faster than you")
+                                            .components(vec![])
+                                            .ephemeral(true)
+                                    ),
+                                )
+                                .await
+                                .unwrap();
+
                             return;
                         }
                     };

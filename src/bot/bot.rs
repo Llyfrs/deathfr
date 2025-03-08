@@ -36,6 +36,8 @@ pub struct Bot {
     commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,
     pub(crate) torn_api: Arc<Mutex<TornAPI>>,
     secrets: Secrets,
+    // Functions that will accept http and ready and return nothing
+    triggers: Vec<fn(Context, Ready) -> ()>,
 }
 
 impl Bot {
