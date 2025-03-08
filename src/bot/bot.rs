@@ -75,7 +75,7 @@ impl Bot {
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.mention_roles.contains(&RoleId::from(self.secrets.revive_role)) {
-            if let Err(e) = msg.channel_id.say(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await {
+            if let Err(e) = msg.reply(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await {
                 error!("Error sending message: {:?}", e);
             }
         }
@@ -83,18 +83,20 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // Clears all the commands from the guild (for cleanup when in development phase)
-        let cmds = ctx
-            .http
-            .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
-            .await
-            .unwrap();
-
-        for cmd in cmds {
-            ctx.http
-                .delete_guild_command(GuildId::from(self.secrets.revive_faction_guild), cmd.id)
+        // Clears all commands when deployed for cleanup, should not be used in dev mode?
+        if !self.secrets.dev {
+            let cmds = ctx
+                .http
+                .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
                 .await
                 .unwrap();
+
+            for cmd in cmds {
+                ctx.http
+                    .delete_guild_command(GuildId::from(self.secrets.revive_faction_guild), cmd.id)
+                    .await
+                    .unwrap();
+            }
         }
 
         {
@@ -105,14 +107,12 @@ impl EventHandler for Bot {
 
                 if command.is_global() {
                     ctx.http.create_global_command(&cmd).await.unwrap();
+                } else {
+                    ctx.http
+                        .create_guild_command(GuildId::from(self.secrets.revive_faction_guild), &cmd)
+                        .await
+                        .unwrap();
                 }
-
-
-                ctx.http
-                    .create_guild_command(GuildId::from(self.secrets.revive_faction_guild), &cmd)
-                    .await
-                    .unwrap();
-
 
             }
         }
