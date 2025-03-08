@@ -74,9 +74,17 @@ impl Bot {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
+        // Skip processing if the message is from the bot itself
+        if msg.author.id == ctx.cache.current_user().id {
+            return;
+        }
+
         if msg.mention_roles.contains(&RoleId::from(self.secrets.revive_role)) {
-            if let Err(e) = msg.reply(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await {
-                error!("Error sending message: {:?}", e);
+            // Create a message with a clickable slash command
+            let reply = msg.reply(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await;
+
+            if let Err(e) = reply {
+                error!("Error sending reply: {:?}", e);
             }
         }
     }
