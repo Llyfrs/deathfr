@@ -103,9 +103,20 @@ async fn serenity(
         log::info!("Running in dev mode");
     }
 
-    tokio::spawn(revive_monitor(secret.revive_faction_api_key.clone(), secret.revive_faction));
+    let mut bot = Bot::new(secret.clone(), api).await;
 
-    let bot = Bot::new(secret, api).await;
+
+
+
+    bot.add_trigger(move |ctx, ready| {
+
+        let revive_faction = secret.revive_faction.clone();
+        let revive_faction_api_key = secret.revive_faction_api_key.clone();
+
+        tokio::spawn(async move {
+            revive_monitor(revive_faction_api_key, revive_faction).await;
+        });
+    });
 
     // Get the discord token set in `Secrets.toml`
     let token = secrets

@@ -36,8 +36,8 @@ pub struct Bot {
     commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,
     pub(crate) torn_api: Arc<Mutex<TornAPI>>,
     secrets: Secrets,
-    // Functions that will accept http and ready and return nothing
-    triggers: Vec<fn(Context, Ready) -> ()>,
+    // For always running functions, they have to be non-blocking otherwise the bot will get stuck on them
+    triggers: Vec<Box<dyn Fn(Context, Ready) + Send + Sync>>,
 }
 
 impl Bot {
@@ -59,7 +59,12 @@ impl Bot {
             commands,
             secrets,
             torn_api,
+            triggers: Vec::new(),
         }
+    }
+
+    pub fn add_trigger(&mut self, trigger: impl Fn(Context, Ready) + Send + Sync + 'static) {
+        self.triggers.push(Box::new(trigger));
     }
     pub fn set_secrets(&mut self, secrets: Secrets) {
         self.secrets = secrets;
@@ -110,6 +115,10 @@ impl EventHandler for Bot {
 
 
             }
+        }
+
+        for trigger in self.triggers.iter() {
+            trigger(ctx.clone(), ready.clone());
         }
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {

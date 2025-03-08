@@ -380,13 +380,16 @@ impl Commands for Contract {
             vec![
                 EmbedField::new(
                     "/contract start",
-                    "Creates a new contract and immediately starts it. Takes `contract_name` and `faction_id` as arguments. \
-                           \nContract name is latter use in list so I recommend naming it something meaningful like served faction name + date. Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
+                    "Creates a new contract and immediately starts it. Takes `contract_name` and `faction_id` and `min_chance` as arguments. \n \
+                           `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \
+                           `faction_id` is the faction you want to track revives for (if **both defense and offensive revives** are provided two different contracts need to be made \n\
+                           `min_chance` is the minimum revive chance of success to count for payment \n\
+                           Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
                     false,
                 ),
                 EmbedField::new(
                     "/contract end",
-                    "Ends a contract. Takes `contract_id` as argument. Contract ID is returned when creating a contract.",
+                    "Ends a contract. Takes `contract_id` as argument. Contract ID is returned when creating a new contract.",
                     false,
                 ),
                 EmbedField::new(
