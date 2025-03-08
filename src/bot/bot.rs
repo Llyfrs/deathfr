@@ -97,6 +97,8 @@ impl EventHandler for Bot {
                     .await
                     .unwrap();
             }
+
+            info!("All old commands cleared!");
         }
 
         {
@@ -117,11 +119,14 @@ impl EventHandler for Bot {
             }
         }
 
+        info!("All commands registered!");
+
         for trigger in self.triggers.iter() {
             trigger(ctx.clone(), ready.clone());
         }
 
-        log::info!("Bot is ready!");
+        info!("All triggers registered! The bot is ready to go!");
+
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let mut commands_guard = self.commands.lock().await;
