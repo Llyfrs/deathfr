@@ -1,5 +1,5 @@
 use log::info;
-use serenity::all::{Context, EventHandler, GuildId, Message, Ready};
+use serenity::all::{Context, EventHandler, GuildId, Message, Ready, RoleId};
 use serenity::model::application::{Interaction};
 use shuttle_runtime::async_trait;
 use std::sync::Arc;
@@ -74,8 +74,8 @@ impl Bot {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == "!hello" {
-            if let Err(e) = msg.channel_id.say(&ctx.http, "world!").await {
+        if msg.mention_roles.contains(&RoleId::from(self.secrets.revive_role)) {
+            if let Err(e) = msg.channel_id.say(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await {
                 error!("Error sending message: {:?}", e);
             }
         }
@@ -120,6 +120,8 @@ impl EventHandler for Bot {
         for trigger in self.triggers.iter() {
             trigger(ctx.clone(), ready.clone());
         }
+
+        log::info!("Bot is ready!");
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let mut commands_guard = self.commands.lock().await;
