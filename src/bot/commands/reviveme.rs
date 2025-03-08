@@ -188,7 +188,14 @@ impl Commands for ReviveMe {
                 }
 
                 if button.data.custom_id == "claim" {
-                    let command = self.cancellation.remove(&button.message.id).unwrap();
+
+                    let command = match self.cancellation.remove(&button.message.id) {
+                        Some(command) => command,
+                        None => {
+                            log::error!("Failed to find command for message: {:?}  (probably two people interacting at the same time)", button.message.id);
+                            return;
+                        }
+                    };
 
                     command
                         .edit_response(
