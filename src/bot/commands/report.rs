@@ -146,6 +146,8 @@ impl Commands for Report {
                         (len - successful - failed).to_string(),
                         true,
                     )
+                    .field("Started", format!("<t:{}:f>", contract.started), true)
+                    .field("Ended", format!("<t:{}:f>", contract.ended), true)
                     .field(
                         "Final Price",
                         format!(
@@ -153,9 +155,7 @@ impl Commands for Report {
                             format_with_commas((successful * 900000 + failed * 1000000) as u64)
                         ),
                         false,
-                    )
-                    .field("Started", format!("<t:{}:f>", contract.started), true)
-                    .field("Ended", format!("<t:{}:f>", contract.ended), true);
+                    );
 
                 command
                     .create_response(
