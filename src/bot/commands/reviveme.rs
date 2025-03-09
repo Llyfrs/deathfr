@@ -4,7 +4,7 @@ use crate::database::structures::Verification;
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
-use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
+use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, GuildId, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
@@ -249,7 +249,7 @@ impl Commands for ReviveMe {
             match interaction {
                 // IF I'm requesting revive and this is instance on server don't allow processing (This way I can test the command without sending ping to the faction server)
                 Interaction::Command(command) => {
-                    if command.user.id == UserId::from(self.secrets.owner_id) {
+                    if command.user.id == UserId::from(self.secrets.owner_id) && command.guild_id != Option::from(GuildId::from(self.secrets.revive_faction_guild)) {
                         return false;
                     }
                 }
