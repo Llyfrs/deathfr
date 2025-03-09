@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-const PAGE_SIZE: u64 = 5;
+const PAGE_SIZE: u64 = 10;
 
 pub struct Contract {
     api: Arc<Mutex<TornAPI>>,
@@ -412,6 +412,7 @@ async fn create_page_embed(
     let options = mongodb::options::FindOptions::builder()
         .skip((page - 1) * page_size)
         .limit(page_size as i64)
+        .sort(doc! {"_id": -1})
         .build();
 
     let contracts: Vec<crate::database::structures::Contract> =
