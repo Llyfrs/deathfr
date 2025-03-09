@@ -15,7 +15,6 @@ pub fn request_update() {
 ///
 /// TODO: Recreate log function form samwise (will need to be run from bot with context)
 pub async fn revive_monitor(api_key: String, revive_faction: u64) {
-
     println!("Starting revive monitor");
 
     let mut api = TornAPI::new(vec![APIKey {
@@ -29,7 +28,6 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
     let mut last_revive: u64 = Database::get_value("last_revive").await.unwrap();
 
     loop {
-
         let revives = api.get_revives(last_revive).await;
 
         match revives {
@@ -37,13 +35,16 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
                 log::error!("Failed to collect revives");
             }
             Some((revives, id)) => {
-
                 // Foolproof faction ID check
                 // so that if API owner changes a faction
                 // AND get API access we don't collect
                 // and more importantly don't update last_revive
                 if id != revive_faction {
-                    log::error!("Faction ID mismatch, expected: {}, got: {}", revive_faction, id);
+                    log::error!(
+                        "Faction ID mismatch, expected: {}, got: {}",
+                        revive_faction,
+                        id
+                    );
                     return;
                 }
 

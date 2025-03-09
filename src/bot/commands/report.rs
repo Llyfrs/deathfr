@@ -1,5 +1,6 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::commands::contract::create_response;
+use crate::bot::tools::get_player_cache::get_player_cache;
 use crate::bot::Secrets;
 use crate::database::structures::{Contract, ReviveEntry, Status};
 use crate::database::Database;
@@ -14,7 +15,6 @@ use serenity::builder::{CreateCommandOption, CreateEmbed, CreateMessage};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::bot::tools::get_player_cache::get_player_cache;
 
 pub(crate) struct Report {
     secrets: Secrets,
@@ -140,11 +140,7 @@ impl Commands for Report {
                     )
                     .field("", "", false)
                     .field("Successful Revives", successful.to_string(), true)
-                    .field(
-                        "Failed Counted",
-                        (failed).to_string(),
-                        true,
-                    )
+                    .field("Failed Counted", (failed).to_string(), true)
                     .field(
                         "Failed Ignored",
                         (len - successful - failed).to_string(),
@@ -154,12 +150,12 @@ impl Commands for Report {
                         "Final Price",
                         format!(
                             "${}",
-                            format_with_commas(
-                                (successful * 900000 + failed * 1000000) as u64
-                            )
+                            format_with_commas((successful * 900000 + failed * 1000000) as u64)
                         ),
                         false,
-                    );
+                    )
+                    .field("Started", format!("<t:{}:f>", contract.started), true)
+                    .field("Ended", format!("<t:{}:f>", contract.ended), true);
 
                 command
                     .create_response(
@@ -178,14 +174,14 @@ impl Commands for Report {
 
                 let mut reward_list = Vec::new();
 
-
                 for id in per_player.keys() {
                     // I could get the name, but latter when I talk it over I will
                     // probably also need the revive skill, now if the report has many players involved
                     // and it hits the rate limit, it will be a real problem as the API will freeze,
                     // here any everywhere else.
                     // TODO : I will probably need some type of cashing system for the skill the will be updated based on revive_monitor.
-                    let player_data = match get_player_cache(*id, &mut *self.api.lock().await).await {
+                    let player_data = match get_player_cache(*id, &mut *self.api.lock().await).await
+                    {
                         Some(player) => player,
                         None => continue,
                     };
@@ -197,9 +193,12 @@ impl Commands for Report {
                         .filter(|r| r.result == "success")
                         .count();
 
-                    let failed_counted = per_player[id].iter().filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure").count();
+                    let failed_counted = per_player[id]
+                        .iter()
+                        .filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure")
+                        .count();
 
-                    let failed =  per_player[id].len() - (failed_counted + success);
+                    let failed = per_player[id].len() - (failed_counted + success);
 
                     reward_list.push((
                         (success * 900000 + failed_counted * 1000000) as u64, // Monetary value for sorting
@@ -207,23 +206,24 @@ impl Commands for Report {
                             "* **{} [{}]** - ${} (s: {}, f: {})",
                             player_name,
                             id,
-                            format_with_commas((success * 900000 + failed_counted * 1000000) as u64),
+                            format_with_commas(
+                                (success * 900000 + failed_counted * 1000000) as u64
+                            ),
                             success,
                             failed_counted
                         ),
                     ));
-                };
+                }
 
                 reward_list.sort_by(|a, b| b.0.cmp(&a.0));
 
                 let pages = reward_list.chunks(10).collect::<Vec<_>>();
 
-                for (i,page) in pages.iter().enumerate() {
+                for (i, page) in pages.iter().enumerate() {
                     let embed = CreateEmbed::new()
-                        .title(format!("Rewards ({}/{})", i+1, pages.len()))
+                        .title(format!("Rewards ({}/{})", i + 1, pages.len()))
                         .description(
-                            page
-                                .iter()
+                            page.iter()
                                 .map(|(_, s)| s.as_str()) // Convert to &str if `s` is a `String`
                                 .collect::<Vec<_>>()
                                 .join("\n"),

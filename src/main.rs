@@ -105,11 +105,7 @@ async fn serenity(
 
     let mut bot = Bot::new(secret.clone(), api).await;
 
-
-
-
     bot.add_trigger(move |ctx, ready| {
-
         let revive_faction = secret.revive_faction.clone();
         let revive_faction_api_key = secret.revive_faction_api_key.clone();
 

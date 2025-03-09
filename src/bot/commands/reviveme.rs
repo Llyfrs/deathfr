@@ -4,12 +4,17 @@ use crate::database::structures::Verification;
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
-use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, GuildId, InstallationContext, InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId};
+use serenity::all::{
+    ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand,
+    CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    EditInteractionResponse, EditMessage, EmbedField, GuildId, InstallationContext,
+    InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId,
+};
+use serenity::builder::CreateAllowedMentions;
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serenity::builder::CreateAllowedMentions;
 use tokio::sync::Mutex;
 
 pub struct ReviveMe {
@@ -37,14 +42,14 @@ fn player_link(id: u64) -> String {
 #[async_trait]
 impl Commands for ReviveMe {
     fn register(&self) -> CreateCommand {
-        CreateCommand::new("reviveme").description("Ask Lifeline for Revive")
+        CreateCommand::new("reviveme")
+            .description("Ask Lifeline for Revive")
             .add_integration_type(InstallationContext::User)
             .add_integration_type(InstallationContext::Guild)
     }
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
-
                 log::info!("User: {:?} is requesting revive", command.user.id);
 
                 // This could be an authorized function??
@@ -124,30 +129,33 @@ impl Commands for ReviveMe {
                     .await
                     .expect("Failed to create response");
 
-
                 let allowed_mentions = CreateAllowedMentions::new()
                     .all_roles(true)
                     .all_users(true)
                     .everyone(true);
 
-
                 let message = MessageBuilder::new()
                     .push("Revive request by")
-                    .push(format!(" [{} [{}]]({}) ", user_name, user_id, player_link(user_id)))
+                    .push(format!(
+                        " [{} [{}]]({}) ",
+                        user_name,
+                        user_id,
+                        player_link(user_id)
+                    ))
                     .role(RoleId::from(self.secrets.revive_role))
                     .build();
 
-                let message = ctx.http.send_message(
-                    ChannelId::from(self.secrets.revive_channel),
-                    Vec::new(), // Empty Vec<CreateAttachment> if no files are being sent
-                    &CreateMessage::new()
-                        .content(message)
-                        .button(
+                let message = ctx
+                    .http
+                    .send_message(
+                        ChannelId::from(self.secrets.revive_channel),
+                        Vec::new(), // Empty Vec<CreateAttachment> if no files are being sent
+                        &CreateMessage::new().content(message).button(
                             CreateButton::new("claim")
                                 .style(ButtonStyle::Success)
                                 .label("Claim"),
-                        )
-                )
+                        ),
+                    )
                     .await
                     .unwrap();
 
@@ -188,7 +196,6 @@ impl Commands for ReviveMe {
                 }
 
                 if button.data.custom_id == "claim" {
-
                     let command = match self.cancellation.remove(&button.message.id) {
                         Some(command) => command,
                         None => {
@@ -249,7 +256,10 @@ impl Commands for ReviveMe {
             match interaction {
                 // IF I'm requesting revive and this is instance on server don't allow processing (This way I can test the command without sending ping to the faction server)
                 Interaction::Command(command) => {
-                    if command.user.id == UserId::from(self.secrets.owner_id) && command.guild_id != Option::from(GuildId::from(self.secrets.revive_faction_guild)) {
+                    if command.user.id == UserId::from(self.secrets.owner_id)
+                        && command.guild_id
+                            != Option::from(GuildId::from(self.secrets.revive_faction_guild))
+                    {
                         return false;
                     }
                 }

@@ -1,12 +1,14 @@
-use std::ops::Add;
-use mongodb::bson::doc;
-use crate::database::Database;
 use crate::database::structures::PlayerCache;
+use crate::database::Database;
 use crate::torn_api::TornAPI;
+use mongodb::bson::doc;
+use std::ops::Add;
 
-pub async fn get_player_cache(user_id : u64, api: &mut TornAPI) -> Option<PlayerCache> {
-
-    let db_result: Vec<PlayerCache>  = Database::get_collection_with_filter( Some(doc! { "user_id": user_id as i64 }) ).await.unwrap();
+pub async fn get_player_cache(user_id: u64, api: &mut TornAPI) -> Option<PlayerCache> {
+    let db_result: Vec<PlayerCache> =
+        Database::get_collection_with_filter(Some(doc! { "user_id": user_id as i64 }))
+            .await
+            .unwrap();
 
     if db_result.is_empty() {
         let player = api.get_player_data(user_id).await.unwrap();

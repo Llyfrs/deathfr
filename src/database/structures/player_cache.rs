@@ -1,11 +1,10 @@
-use std::ops::Add;
+use crate::database::structures::{CollectionName, DatabaseName};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::database::structures::{CollectionName, DatabaseName};
+use std::ops::Add;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PlayerCache {
-
     #[serde(default)]
     pub(crate) user_id: u64, // Defaults to 0 (i32's Default implementation)
 

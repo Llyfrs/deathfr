@@ -66,7 +66,6 @@ async fn get_help(
             let mut fields = Vec::new();
 
             for command in commands.lock().await.iter() {
-
                 if command.authorized(ctx.clone(), interaction.clone()).await {
                     if let Some(field) = command.help() {
                         for field in field {

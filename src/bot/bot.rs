@@ -1,6 +1,6 @@
 use log::info;
 use serenity::all::{Context, EventHandler, GuildId, Message, Ready, RoleId};
-use serenity::model::application::{Interaction};
+use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -79,9 +79,17 @@ impl EventHandler for Bot {
             return;
         }
 
-        if msg.mention_roles.contains(&RoleId::from(self.secrets.revive_role)) {
+        if msg
+            .mention_roles
+            .contains(&RoleId::from(self.secrets.revive_role))
+        {
             // Create a message with a clickable slash command
-            let reply = msg.reply(&ctx.http, "Did you know you can now use the /revive command instead? Try it out!").await;
+            let reply = msg
+                .reply(
+                    &ctx.http,
+                    "Did you know you can now use the /revive command instead? Try it out!",
+                )
+                .await;
 
             if let Err(e) = reply {
                 error!("Error sending reply: {:?}", e);
@@ -119,11 +127,13 @@ impl EventHandler for Bot {
                     ctx.http.create_global_command(&cmd).await.unwrap();
                 } else {
                     ctx.http
-                        .create_guild_command(GuildId::from(self.secrets.revive_faction_guild), &cmd)
+                        .create_guild_command(
+                            GuildId::from(self.secrets.revive_faction_guild),
+                            &cmd,
+                        )
                         .await
                         .unwrap();
                 }
-
             }
         }
 
@@ -134,7 +144,6 @@ impl EventHandler for Bot {
         }
 
         info!("All triggers registered! The bot is ready to go!");
-
     }
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         let mut commands_guard = self.commands.lock().await;
