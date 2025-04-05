@@ -174,18 +174,21 @@ impl Commands for ReviveMe {
                         user_name,
                         user_id,
                         player_link(user_id)
-                    ))
-                    .push("from")
-                    .push(format!(
-                        " [{}]({}) ",
-                        faction_name,
-                        faction_link(faction_id)
-                    ))
-                    .role(RoleId::from(self.secrets.revive_role))
-                    .build();
+                    ));
+
+                if faction_id != 0 {
+                    message.push("from")
+                        .push(format!(
+                            " [{}]({}) ",
+                            faction_name,
+                            faction_link(faction_id)
+                        ));
+                }
+
+                message.role(RoleId::from(self.secrets.revive_role));
 
                 if is_in_contract {
-                    message.push_bold("\nThis player is under contract ");
+                    message.push_bold_line("This player is under contract ");
                     message.push(format!("Revive above {}% chance", contract[0].min_chance));
                 }
 
