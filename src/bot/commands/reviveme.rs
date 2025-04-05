@@ -1,6 +1,6 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::Secrets;
-use crate::database::structures::Verification;
+use crate::database::structures::{Contract, Verification};
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
@@ -16,6 +16,7 @@ use shuttle_runtime::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
 
 pub struct ReviveMe {
     api: Arc<Mutex<TornAPI>>,
@@ -37,6 +38,11 @@ impl ReviveMe {
 fn player_link(id: u64) -> String {
     //https://www.torn.com/profiles.php?XID=2531272
     format!("https://www.torn.com/profiles.php?XID={}", id)
+}
+
+fn faction_link(id: u64) -> String {
+    //https://www.torn.com/factions.php?step=profile&ID=14821
+    format!("https://www.torn.com/factions.php?step=profile&ID={}", id)
 }
 
 #[async_trait]
@@ -68,6 +74,8 @@ impl Commands for ReviveMe {
 
                 let mut user_id = 0;
                 let mut user_name = "".to_string();
+                let mut faction_id = 0;
+                let mut faction_name = "".to_string();
 
                 if results.is_empty() {
                     let player = self
@@ -96,21 +104,43 @@ impl Commands for ReviveMe {
                         return; // Leave the function
                     }
 
+
+
                     user_id = player["player_id"].as_u64().unwrap();
                     user_name = player["name"].as_str().unwrap().to_string();
+
+                    faction_id = player["faction"]["faction_id"].as_i64().unwrap() as u64;
+                    faction_name = player["faction"]["faction_name"].as_str().unwrap().to_string();
+
 
                     Database::insert(Verification {
                         discord_id: command.user.id.get(),
                         torn_player_id: user_id,
                         name: user_name.clone(),
                         expire_at: chrono::Utc::now() + chrono::Duration::days(1),
+                        faction_id: Some(faction_id),
+                        faction_name: Some(faction_name.clone()),
                     })
                     .await
                     .unwrap();
                 } else {
                     user_id = results[0].torn_player_id;
                     user_name = results[0].name.clone();
+                    faction_id = results[0].faction_id.unwrap_or(0);
+                    faction_name = results[0]
+                        .faction_name
+                        .clone()
+                        .unwrap_or("No faction".to_string());
                 }
+
+                let contract : Vec<Contract> = Database::get_collection_with_filter(
+                    Some(doc! {
+                        "faction_id": faction_id.to_string(),
+                        "status": "active"
+                    })).await.unwrap();
+
+                let is_in_contract = contract.len() > 0;
+
 
                 command
                     .create_response(
@@ -134,16 +164,32 @@ impl Commands for ReviveMe {
                     .all_users(true)
                     .everyone(true);
 
-                let message = MessageBuilder::new()
-                    .push("Revive request by")
+
+
+                let mut message = MessageBuilder::new();
+
+                message.push("Revive request by")
                     .push(format!(
                         " [{} [{}]]({}) ",
                         user_name,
                         user_id,
                         player_link(user_id)
                     ))
+                    .push("from")
+                    .push(format!(
+                        " [{}]({}) ",
+                        faction_name,
+                        faction_link(faction_id)
+                    ))
                     .role(RoleId::from(self.secrets.revive_role))
                     .build();
+
+                if is_in_contract {
+                    message.push_bold("\nThis player is under contract ");
+                    message.push(format!("Revive above {}% chance", contract[0].min_chance));
+                }
+
+                let message = message.build();
 
                 let message = ctx
                     .http

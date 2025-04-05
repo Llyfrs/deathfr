@@ -12,6 +12,9 @@ pub struct Verification {
     ///
     /// The idea is to make sure the information like username gets updated now and then in case the user changed it.
     pub(crate) expire_at: DateTime<Utc>,
+
+    pub(crate) faction_id: Option<u64>,
+    pub(crate) faction_name: Option<String>,
 }
 
 impl CollectionName for Verification {

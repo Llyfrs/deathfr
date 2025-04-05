@@ -62,6 +62,8 @@ impl Commands for Stats {
                         torn_player_id: player.get("player_id").unwrap().as_i64().unwrap() as u64,
                         name: player.get("name").unwrap().as_str().unwrap().to_string(),
                         expire_at: chrono::Utc::now() + chrono::Duration::days(1),
+                        faction_id: Option::from(player.get("faction").unwrap().get("faction_id").unwrap().as_i64().unwrap() as u64),
+                        faction_name: Option::from(player.get("faction").unwrap().get("faction_name").unwrap().as_str().unwrap().to_string()),
                     })
                     .await
                     .unwrap();
