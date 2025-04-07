@@ -24,9 +24,7 @@ pub struct Contract {
     pub(crate) status: Status,
     pub(crate) faction_cut: i64,
 }
-fn default_faction_cut() -> i32 {
-    10
-}
+
 
 impl CollectionName for Contract {
     fn collection_name() -> &'static str {

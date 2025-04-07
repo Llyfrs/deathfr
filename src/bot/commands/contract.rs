@@ -82,6 +82,13 @@ impl Commands for Contract {
                         "The minimum chance of success to count for payment",
                     )
                     .required(true),
+                ).add_sub_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "faction_cut",
+                        "The cut the faction gets from the contract (default 10%)",
+                    )
+                    .required(false),
                 ),
             )
             .add_option(
@@ -149,6 +156,21 @@ impl Commands for Contract {
                             return;
                         };
 
+                    let faction_cut = sub_options
+                        .get(3) // Returns Option<&CommandDataOptionValue>
+                        .map_or(10u64, |option| { // Default if index out of bounds (or None)
+                            if let CommandDataOptionValue::Integer(value) = option.value {
+                                if value >= 0 { // Explicitly check for negative values
+                                    value as u64
+                                } else {
+                                    log::warn!("Received negative value {} for faction_cut, using default.", value); // Or handle as error
+                                    10u64 // Use default if negative
+                                }
+                            } else {
+                                10u64 // Default if correct index but wrong type
+                            }
+                        });
+
                     let faction_data = self
                         .api
                         .lock()
@@ -179,7 +201,7 @@ impl Commands for Contract {
                         started: Utc::now().timestamp() as u64,
                         ended: 0,
                         status: Status::Active,
-                        faction_cut: 10,
+                        faction_cut: faction_cut as i64,
                     };
 
                     let message = MessageBuilder::new()
@@ -390,6 +412,7 @@ impl Commands for Contract {
                            * `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \
                            * `faction_id` is the faction you want to track revives for (if **both defense and offensive revives** are provided two different contracts need to be made \n\
                            * `min_chance` is the minimum revive chance of success to count for payment \n\
+                           * `faction_cut` is the cut the faction gets from the contract (defaults to 10% if not set) \n\
                            Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
                     false,
                 ),
@@ -403,6 +426,7 @@ impl Commands for Contract {
                     format!("Lists all contracts. Takes `status` as argument. Status can be `active`, `ended`, or `all`. Contracts are separated in to pages by {}", PAGE_SIZE),
                     false,
                 ),
+
             ]
         )
     }

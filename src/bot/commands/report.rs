@@ -49,6 +49,14 @@ impl Commands for Report {
                     return;
                 }
 
+
+                let is_admin = self
+                    .secrets
+                    .admins
+                    .contains(&command.user.id.get());
+
+
+
                 let contract_id = command.data.options[0].value.as_str().unwrap();
 
                 let contract = Database::get_collection_with_filter::<Contract>(Some(doc! {
@@ -69,6 +77,8 @@ impl Commands for Report {
                     create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string(), true).await;
                     return;
                 }
+
+
 
                 //Between start and end
 
@@ -117,7 +127,14 @@ impl Commands for Report {
                     .await
                     .unwrap();
 
-                let embed = CreateEmbed::new()
+
+                let price = vec![
+                    format_with_commas((successful * 900000 + failed * 1000000) as u64),
+                    format_with_commas((successful * 900000 + failed * 1000000) as u64
+                        * (1.0 + contract.faction_cut as f64 / 100.0) as u64),
+                ];
+
+                let mut embed = CreateEmbed::new()
                     .title(contract.contract_name.clone() + " Report")
                     .description(" ")
                     .field(
@@ -148,14 +165,29 @@ impl Commands for Report {
                     )
                     .field("Started", format!("<t:{}:f>", contract.started), true)
                     .field("Ended", format!("<t:{}:f>", contract.ended), true)
+                    .field("", "", false)
                     .field(
                         "Final Price",
+                        price.get(!is_admin as usize)
+                            .unwrap_or(&"".to_string())
+                            .to_string(),
+                        true,
+                    );
+
+
+                if is_admin {
+                    embed = embed.field(
+                        format!("Final Price ({}%)", contract.faction_cut),
                         format!(
                             "${}",
-                            format_with_commas((successful * 900000 + failed * 1000000) as u64)
+                            format_with_commas(
+                                ((successful * 900000 + failed * 1000000) as f64
+                                    * (1.0 + contract.faction_cut as f64 / 100.0)) as u64
+                            )
                         ),
-                        false,
+                        true,
                     );
+                };
 
                 command
                     .create_response(
