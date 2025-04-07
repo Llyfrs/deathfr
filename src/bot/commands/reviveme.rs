@@ -16,7 +16,7 @@ use shuttle_runtime::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
+use crate::bot::tools::resolve_discord_verification::resolve_discord_verification;
 
 pub struct ReviveMe {
     api: Arc<Mutex<TornAPI>>,
@@ -45,6 +45,7 @@ fn faction_link(id: u64) -> String {
     format!("https://www.torn.com/factions.php?step=profile&ID={}", id)
 }
 
+
 #[async_trait]
 impl Commands for ReviveMe {
     fn register(&self) -> CreateCommand {
@@ -53,6 +54,10 @@ impl Commands for ReviveMe {
             .add_integration_type(InstallationContext::User)
             .add_integration_type(InstallationContext::Guild)
     }
+
+
+
+
     async fn action(&mut self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(command) => {
@@ -67,77 +72,41 @@ impl Commands for ReviveMe {
                     "discord_id": command.user.id.get().to_string()
                 };
 
-                //TODO: when results is not empty, skip calling the API, this is the most to be used command and should save resources.
-                let results = Database::get_collection_with_filter::<Verification>(Some(filter))
-                    .await
-                    .unwrap();
 
-                let mut user_id = 0;
-                let mut user_name = "".to_string();
-                let mut faction_id = 0;
-                let mut faction_name = "".to_string();
+                let verification = resolve_discord_verification(
+                    command.user.id.get(),
+                    self.api.clone()
+                ).await;
 
-                if results.is_empty() {
-                    let player = self
-                        .api
-                        .lock()
+
+                if verification.is_none() {
+
+                    log::warn!("Player {:?} is not verified", command.user.id);
+
+                    command
+                        .create_response(
+                            &ctx.http,
+                            CreateInteractionResponse::Message(
+                                CreateInteractionResponseMessage::new()
+                                    .content("You are not verified")
+                                    .ephemeral(true),
+                            ),
+                        )
                         .await
-                        .get_player_data(command.user.id.get())
-                        .await
-                        .unwrap();
+                        .expect("Failed to create response");
 
-                    if let Some(error) = player.get("error") {
-                        log::info!("Error: {:?}", error);
-
-                        command
-                            .create_response(
-                                &ctx.http,
-                                CreateInteractionResponse::Message(
-                                    CreateInteractionResponseMessage::new()
-                                        .content("You are not verified")
-                                        .ephemeral(true),
-                                ),
-                            )
-                            .await
-                            .expect("Failed to create response");
-
-                        return; // Leave the function
-                    }
-
-
-
-                    user_id = player["player_id"].as_u64().unwrap();
-                    user_name = player["name"].as_str().unwrap().to_string();
-
-                    faction_id = player["faction"]["faction_id"].as_i64().unwrap() as u64;
-                    faction_name = player["faction"]["faction_name"].as_str().unwrap().to_string();
-
-
-                    Database::insert(Verification {
-                        discord_id: command.user.id.get(),
-                        torn_player_id: user_id,
-                        name: user_name.clone(),
-                        expire_at: chrono::Utc::now() + chrono::Duration::days(1),
-                        faction_id: Some(faction_id),
-                        faction_name: Some(faction_name.clone()),
-                    })
-                    .await
-                    .unwrap();
-                } else {
-                    user_id = results[0].torn_player_id;
-                    user_name = results[0].name.clone();
-                    faction_id = results[0].faction_id.unwrap_or(0);
-                    faction_name = results[0]
-                        .faction_name
-                        .clone()
-                        .unwrap_or("No faction".to_string());
+                    return; // Leave the function
                 }
+
+                // Is not None here
+                let user = verification.unwrap();
+
 
                 let contract : Vec<Contract> = Database::get_collection_with_filter(
                     Some(doc! {
-                        "faction_id": faction_id.to_string(),
-                        "status": "active"
-                    })).await.unwrap();
+                            "faction_id": user.faction_id.to_string(),
+                            "status": "active"
+                        })).await.unwrap();
 
                 let is_in_contract = contract.len() > 0;
 
@@ -171,9 +140,9 @@ impl Commands for ReviveMe {
                 message.push("Revive request by")
                     .push(format!(
                         " [{} [{}]]({}) ",
-                        user_name,
-                        user_id,
-                        player_link(user_id)
+                        user.name,
+                        user.torn_player_id,
+                        player_link(user.torn_player_id)
                     ));
 
                 if faction_id != 0 {
