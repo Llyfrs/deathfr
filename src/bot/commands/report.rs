@@ -177,7 +177,7 @@ impl Commands for Report {
 
                 if is_admin {
                     embed = embed.field(
-                        format!("Final Price ({}%)", contract.faction_cut),
+                        format!("Final Price (+{}%)", contract.faction_cut),
                         format!(
                             "${}",
                             format_with_commas(
