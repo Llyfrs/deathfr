@@ -11,6 +11,7 @@ pub struct PlayerCache {
     #[serde(default)]
     pub(crate) name: String, // Defaults to "" (String's Default implementation)
 
+    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub(crate) expire_at: DateTime<Utc>,
 }
 
