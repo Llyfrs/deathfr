@@ -1,5 +1,5 @@
 use crate::bot::commands::command::Commands;
-use crate::bot::commands::contract::create_response;
+use crate::bot::tools::create_response::create_response;
 use crate::bot::Secrets;
 use crate::database::structures::{ReviveEntry};
 use crate::database::Database;
@@ -52,7 +52,7 @@ impl Commands for Stats {
                 if verification.is_none() {
 
                     log::info!("User {} is not verified", id);
-                    create_response(&ctx, command, "You are not verified".to_string(),true).await;
+                    create_response(&ctx, command, "You are not verified".to_string(), true).await;
                     return; // Leave the function
 
                 }

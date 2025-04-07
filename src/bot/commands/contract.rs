@@ -21,6 +21,7 @@ use serenity::utils::MessageBuilder;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use crate::bot::tools::create_response;
 
 const PAGE_SIZE: u64 = 10;
 
@@ -158,7 +159,7 @@ impl Commands for Contract {
 
                     if let Some(error) = faction_data.get("error") {
                         log::info!("Error: {:?}", error);
-                        create_response(&ctx, command.clone(), "Invalid faction ID".to_string(),true)
+                        create_response::create_response(&ctx, command.clone(), "Invalid faction ID".to_string(), true)
                             .await;
                         return;
                     }
@@ -178,6 +179,7 @@ impl Commands for Contract {
                         started: Utc::now().timestamp() as u64,
                         ended: 0,
                         status: Status::Active,
+                        faction_cut: 10,
                     };
 
                     let message = MessageBuilder::new()
@@ -238,7 +240,7 @@ impl Commands for Contract {
 
                     if result.is_empty() {
                         log::warn!("No contract found with ID: {}", contract_id);
-                        create_response(&ctx, command.clone(), message.clone(),true).await;
+                        create_response::create_response(&ctx, command.clone(), message.clone(), true).await;
                         return;
                     }
 
@@ -270,7 +272,7 @@ impl Commands for Contract {
                     }
 
                     request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
-                    create_response(&ctx, command.clone(), message.clone(), true).await;
+                    create_response::create_response(&ctx, command.clone(), message.clone(), true).await;
                 } else {
                     log::warn!("Invalid options structure for 'end' subcommand.");
                 }
@@ -480,20 +482,6 @@ async fn create_page_embed(
 }
 fn format_time(time: u64) -> String {
     format!("<t:{}:f>", time)
-}
-
-pub async fn create_response(ctx: &Context, command: CommandInteraction, message: String, ephemeral: bool) {
-    command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new()
-                    .content(message)
-                    .ephemeral(ephemeral),
-            ),
-        )
-        .await
-        .unwrap();
 }
 
 async fn generate_contract_id() -> String {

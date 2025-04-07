@@ -1,5 +1,5 @@
 use crate::bot::commands::command::Commands;
-use crate::bot::commands::contract::create_response;
+use crate::bot::tools::create_response::create_response;
 use crate::bot::tools::get_player_cache::get_player_cache;
 use crate::bot::Secrets;
 use crate::database::structures::{Contract, ReviveEntry, Status};
@@ -59,14 +59,14 @@ impl Commands for Report {
                 .pop();
 
                 if contract.is_none() {
-                    create_response(&ctx, command, "Contract not found".to_string(),true).await;
+                    create_response(&ctx, command, "Contract not found".to_string(), true).await;
                     return;
                 }
 
                 let contract = contract.unwrap();
 
                 if contract.status != Status::Ended {
-                    create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string(),true).await;
+                    create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string(), true).await;
                     return;
                 }
 
