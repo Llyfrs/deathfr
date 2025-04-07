@@ -48,7 +48,7 @@ impl Database {
         // Return the client if it's valid
         Some(db_conn.clone().unwrap())
     }
-    pub async fn close() {
+    pub async fn close(&self) {
         let mut db_conn = DB_CONN.lock().await; // Use `await` for the async mutex
         if let Some(client) = db_conn.take() {
             client.shutdown().await;

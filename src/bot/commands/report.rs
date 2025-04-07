@@ -59,14 +59,14 @@ impl Commands for Report {
                 .pop();
 
                 if contract.is_none() {
-                    create_response(&ctx, command, "Contract not found".to_string()).await;
+                    create_response(&ctx, command, "Contract not found".to_string(),true).await;
                     return;
                 }
 
                 let contract = contract.unwrap();
 
                 if contract.status != Status::Ended {
-                    create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string()).await;
+                    create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string(),true).await;
                     return;
                 }
 
@@ -198,7 +198,7 @@ impl Commands for Report {
                         .filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure")
                         .count();
 
-                    let failed = per_player[id].len() - (failed_counted + success);
+                    let _failed = per_player[id].len() - (failed_counted + success);
 
                     reward_list.push((
                         (success * 900000 + failed_counted * 1000000) as u64, // Monetary value for sorting

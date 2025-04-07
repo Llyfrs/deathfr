@@ -158,7 +158,7 @@ impl Commands for Contract {
 
                     if let Some(error) = faction_data.get("error") {
                         log::info!("Error: {:?}", error);
-                        create_response(&ctx, command.clone(), "Invalid faction ID".to_string())
+                        create_response(&ctx, command.clone(), "Invalid faction ID".to_string(),true)
                             .await;
                         return;
                     }
@@ -238,7 +238,7 @@ impl Commands for Contract {
 
                     if result.is_empty() {
                         log::warn!("No contract found with ID: {}", contract_id);
-                        create_response(&ctx, command.clone(), message.clone()).await;
+                        create_response(&ctx, command.clone(), message.clone(),true).await;
                         return;
                     }
 
@@ -270,7 +270,7 @@ impl Commands for Contract {
                     }
 
                     request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
-                    create_response(&ctx, command.clone(), message.clone()).await;
+                    create_response(&ctx, command.clone(), message.clone(), true).await;
                 } else {
                     log::warn!("Invalid options structure for 'end' subcommand.");
                 }
@@ -354,7 +354,7 @@ impl Commands for Contract {
         }
     }
 
-    async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
+    async fn authorized(&self, _ctx: Context, interaction: Interaction) -> bool {
         match interaction {
             Interaction::Command(command) => {
                 if self.secrets.admins.contains(&command.user.id.get()) {
@@ -482,14 +482,14 @@ fn format_time(time: u64) -> String {
     format!("<t:{}:f>", time)
 }
 
-pub async fn create_response(ctx: &Context, command: CommandInteraction, message: String) {
+pub async fn create_response(ctx: &Context, command: CommandInteraction, message: String, ephemeral: bool) {
     command
         .create_response(
             &ctx.http,
             CreateInteractionResponse::Message(
                 CreateInteractionResponseMessage::new()
                     .content(message)
-                    .ephemeral(true),
+                    .ephemeral(ephemeral),
             ),
         )
         .await
@@ -499,7 +499,7 @@ pub async fn create_response(ctx: &Context, command: CommandInteraction, message
 async fn generate_contract_id() -> String {
     loop {
         // Generate a 6-character alphanumeric string
-        let contract_id: String = rand::thread_rng()
+        let contract_id: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(6) // Adjust the length as needed
             .map(|c| c as char)

@@ -1,5 +1,5 @@
 use crate::database::structures::{ReviveEntry, TargetLastAction};
-use log::{error, log};
+use log::{error};
 use reqwest;
 use serde_json;
 use serde_json::Value;
@@ -24,7 +24,6 @@ pub struct TornAPI {
     name: String,
 }
 
-pub struct RunOutOfCallsError;
 impl TornAPI {
     pub fn new(keys: Vec<APIKey>) -> TornAPI {
         TornAPI {

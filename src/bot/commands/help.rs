@@ -55,7 +55,7 @@ async fn get_help(
     commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,
     ctx: Context,
     interaction: Interaction,
-    secrets: Secrets,
+    _secrets: Secrets,
 ) {
     match interaction {
         Interaction::Command(ref command) => {

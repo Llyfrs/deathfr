@@ -1,6 +1,6 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::Secrets;
-use crate::database::structures::{Contract, Verification};
+use crate::database::structures::{Contract};
 use crate::database::Database;
 use crate::torn_api::TornAPI;
 use mongodb::bson::doc;
@@ -8,9 +8,10 @@ use serenity::all::{
     ButtonStyle, ChannelId, CommandInteraction, Context, CreateButton, CreateCommand,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
     EditInteractionResponse, EditMessage, EmbedField, GuildId, InstallationContext,
-    InteractionContext, Message, MessageBuilder, MessageId, RoleId, UserId,
+    Message, MessageBuilder, MessageId, RoleId, UserId,
 };
-use serenity::builder::CreateAllowedMentions;
+
+
 use serenity::model::application::Interaction;
 use shuttle_runtime::async_trait;
 use std::collections::HashMap;
@@ -68,10 +69,6 @@ impl Commands for ReviveMe {
                     return;
                 }
 
-                let filter = doc! {
-                    "discord_id": command.user.id.get().to_string()
-                };
-
 
                 let verification = resolve_discord_verification(
                     command.user.id.get(),
@@ -81,7 +78,7 @@ impl Commands for ReviveMe {
 
                 if verification.is_none() {
 
-                    log::warn!("Player {:?} is not verified", command.user.id);
+                    log::warn!("Player {:?} is not verified", command.user.id.get());
 
                     command
                         .create_response(
@@ -128,12 +125,12 @@ impl Commands for ReviveMe {
                     .await
                     .expect("Failed to create response");
 
-                let allowed_mentions = CreateAllowedMentions::new()
+/*                let allowed_mentions = CreateAllowedMentions::new()
                     .all_roles(true)
                     .all_users(true)
                     .everyone(true);
 
-
+*/
 
                 let mut message = MessageBuilder::new();
 
@@ -145,12 +142,12 @@ impl Commands for ReviveMe {
                         player_link(user.torn_player_id)
                     ));
 
-                if faction_id != 0 {
+                if user.faction_id != 0 {
                     message.push("from")
                         .push(format!(
                             " [{}]({}) ",
-                            faction_name,
-                            faction_link(faction_id)
+                            user.faction_name,
+                            faction_link(user.faction_id)
                         ));
                 }
 
@@ -177,7 +174,8 @@ impl Commands for ReviveMe {
                     .await
                     .unwrap();
 
-                let msg = command.get_response(&ctx.http).await.unwrap();
+
+                command.get_response(&ctx.http).await.unwrap();
 
                 self.responses.insert(command.user.id, message.clone());
                 self.cancellation.insert(message.id, command.clone());
@@ -269,7 +267,7 @@ impl Commands for ReviveMe {
         }
     }
 
-    async fn authorized(&self, ctx: Context, interaction: Interaction) -> bool {
+    async fn authorized(&self, _ctx: Context, interaction: Interaction) -> bool {
         if !self.secrets.dev {
             match interaction {
                 // IF I'm requesting revive and this is instance on server don't allow processing (This way I can test the command without sending ping to the faction server)
