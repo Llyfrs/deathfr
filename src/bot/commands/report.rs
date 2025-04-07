@@ -170,7 +170,7 @@ impl Commands for Report {
                         "Final Price",
                         price.get(!is_admin as usize)
                             .unwrap_or(&"".to_string())
-                            .to_string(),
+                            .to_string(),sh
                         true,
                     );
 
