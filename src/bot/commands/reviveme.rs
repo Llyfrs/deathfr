@@ -56,7 +56,7 @@ impl ReviveMe {
 
         let contract: Vec<Contract> = Database::get_collection_with_filter(
             Some(doc! {
-                            "faction_id": user.faction_id.to_string(),
+                            "faction_id": user.faction_id as i64,
                             "status": "active"
                         })).await.unwrap();
 
