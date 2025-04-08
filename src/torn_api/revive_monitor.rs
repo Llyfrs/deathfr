@@ -72,8 +72,8 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
             .expect("Failed to set last update value");
 
         let mut minutes = 0;
-        while !UPDATE.load(std::sync::atomic::Ordering::Relaxed) && minutes < 60 {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        while !UPDATE.load(std::sync::atomic::Ordering::Relaxed) && minutes < 60*6 {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60 / 6)).await;
             minutes += 1;
         }
 
