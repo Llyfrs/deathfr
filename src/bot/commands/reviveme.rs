@@ -109,7 +109,7 @@ impl ReviveMe {
         message.role(RoleId::from(self.secrets.revive_role));
 
         if is_in_contract {
-            message.push_bold_line("\nThis player is under contract ");
+            message.push_bold("\nThis player is under contract ");
             message.push(format!("Revive above {}% chance", contract[0].min_chance));
         }
 
