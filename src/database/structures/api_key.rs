@@ -7,12 +7,10 @@ use serde::{Deserialize, Serialize};
 pub struct APIKey {
     #[serde(rename = "_id")] // Ensure it maps to MongoDB's "_id" field
     pub(crate) id: ObjectId,
-    pub(crate) api_key: String,
-    pub(crate) discord_id: String,
-    pub(crate) last_updated: bson::DateTime,
-    pub(crate) name: String,
-    pub(crate) torn_id: i32,
     #[serde(default)]
+    pub(crate) api_key: String,
+    #[serde(default)]
+    pub(crate) name: String,
     pub(crate) valid: bool,
 }
 
