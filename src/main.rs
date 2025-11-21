@@ -8,21 +8,25 @@ use crate::database::Database;
 use anyhow::Context as _;
 use log;
 use serenity::prelude::*;
-use shuttle_runtime::SecretStore;
+use std::env;
+use dotenv::dotenv;
 
 use crate::torn_api::{revive_monitor, TornAPI};
 
-#[shuttle_runtime::main]
-async fn serenity(
-    #[shuttle_runtime::Secrets] secrets: SecretStore,
-) -> shuttle_serenity::ShuttleSerenity {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    dotenv().ok();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,deathfr=info")).init();
     Database::init(
-        secrets
-            .get("DATABASE_URL")
+        env::var("DATABASE_URL")
             .context("'MONGODB_URI' was not found")?,
     )
     .await
     .expect("Error initializing database");
+
+    Database::ensure_indexes()
+        .await
+        .expect("Error ensuring database indexes");
 
     let api_keys = Database::get_collection::<APIKey>().await.unwrap();
 
@@ -42,44 +46,35 @@ async fn serenity(
         .collect();
 
     let secret = Secrets {
-        revive_channel: secrets
-            .get("REVIVE_CHANNEL")
+        revive_channel: env::var("REVIVE_CHANNEL")
             .context("'REVIVE_CHANNEL' was not found")?
             .parse()
             .unwrap(),
-        revive_role: secrets
-            .get("REVIVE_ROLE")
+        revive_role: env::var("REVIVE_ROLE")
             .context("'REVIVE_ROLE' was not found")?
             .parse()
             .unwrap(),
-        revive_faction_guild: secrets
-            .get("REVIVE_FACTION_GUILD_ID")
+        revive_faction_guild: env::var("REVIVE_FACTION_GUILD_ID")
             .context("'REVIVE_FACTION_GUILD_ID' was not found")?
             .parse()
             .unwrap(),
-        revive_faction: secrets
-            .get("REVIVE_FACTION")
+        revive_faction: env::var("REVIVE_FACTION")
             .context("'REVIVE_FACTION' was not found")?
             .parse()
             .unwrap(),
-        owner_id: secrets
-            .get("OWNER_ID")
+        owner_id: env::var("OWNER_ID")
             .context("'OWNER_ID' was not found")?
             .parse()
             .unwrap(),
-        revive_faction_api_key: secrets
-            .get("REVIVE_FACTION_API_KEY")
+        revive_faction_api_key: env::var("REVIVE_FACTION_API_KEY")
             .context("'REVIVE_FACTION_API_KEY' was not found")?,
-        test_api_key: secrets
-            .get("TEST_API_KEY")
+        test_api_key: env::var("TEST_API_KEY")
             .context("'TEST_API_KEY' was not found")?,
-        dev: secrets
-            .get("DEV")
+        dev: env::var("DEV")
             .context("'DEV' was not found")?
             .parse()
             .unwrap(),
-        admins: secrets
-            .get("ADMINS")
+        admins: env::var("ADMINS")
             .context("'ADMINS' was not found")?
             .split(',')
             .map(|x| x.trim().parse().unwrap())
@@ -115,17 +110,18 @@ async fn serenity(
     });
 
     // Get the discord token set in `Secrets.toml`
-    let token = secrets
-        .get("DISCORD_TOKEN")
+    // Get the discord token set in `.env`
+    let token = env::var("DISCORD_TOKEN")
         .context("'DISCORD_TOKEN' was not found")?;
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-    let client = Client::builder(&token, intents)
+    let mut client = Client::builder(&token, intents)
         .event_handler(bot)
         .await
         .expect("Err creating client");
 
-    Ok(client.into())
+    client.start().await?;
+    Ok(())
 }

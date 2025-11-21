@@ -35,3 +35,23 @@ impl DatabaseName for Verification {
         "deathfr"
     }
 }
+
+#[async_trait::async_trait]
+impl crate::database::structures::IndexSetup for Verification {
+    async fn ensure_indexes(client: &mongodb::Client) -> mongodb::error::Result<()> {
+        let db = client.database(Self::database_name());
+        let collection = db.collection::<Verification>(Self::collection_name());
+
+        let model = mongodb::IndexModel::builder()
+            .keys(mongodb::bson::doc! { "expire_at": 1 })
+            .options(
+                mongodb::options::IndexOptions::builder()
+                    .expire_after(std::time::Duration::from_secs(0))
+                    .build(),
+            )
+            .build();
+
+        collection.create_index(model).await?;
+        Ok(())
+    }
+}

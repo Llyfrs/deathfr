@@ -1,7 +1,7 @@
 use log::info;
 use serenity::all::{Context, EventHandler, GuildId, Message, Ready, RoleId};
 use serenity::model::application::Interaction;
-use shuttle_runtime::async_trait;
+use serenity::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

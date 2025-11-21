@@ -1,12 +1,12 @@
 use crate::database::Database;
 use crate::torn_api::torn_api::APIKey;
 use crate::torn_api::TornAPI;
-use std::sync::atomic::AtomicBool;
+use tokio::sync::Notify;
 use std::sync::LazyLock;
 
-static UPDATE: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
+static UPDATE: LazyLock<Notify> = LazyLock::new(|| Notify::new());
 pub fn request_update() {
-    UPDATE.store(true, std::sync::atomic::Ordering::Relaxed);
+    UPDATE.notify_one();
 }
 
 /// Periodically collect revives from Torn API and store them in the database
@@ -15,7 +15,7 @@ pub fn request_update() {
 ///
 /// TODO: Recreate log function form samwise (will need to be run from bot with context)
 pub async fn revive_monitor(api_key: String, revive_faction: u64) {
-    println!("Starting revive monitor");
+    log::info!("Starting revive monitor");
 
     let mut api = TornAPI::new(vec![APIKey {
         key: api_key,
@@ -25,10 +25,15 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
 
     api.set_name("Revive Monitor (Deathfr)".to_string());
 
-    let mut last_revive: u64 = Database::get_value("last_revive").await.unwrap();
+    log::info!("Getting last_revive from database...");
+    let mut last_revive: u64 = Database::get_value("last_revive").await.unwrap_or(1);
+    log::info!("Got last_revive: {}", last_revive);
 
     loop {
+        let mut sleep_duration = 3600;
+        log::info!("Fetching revives from API...");
         let revives = api.get_revives(last_revive).await;
+        log::info!("Fetched revives");
 
         match revives {
             None => {
@@ -49,21 +54,28 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
                 }
 
                 let len = revives.len();
-
-                Database::insert_manny(revives.clone())
-                    .await
-                    .expect("Failed to insert revives");
-
-                last_revive = revives.last().unwrap().timestamp;
-
-                match Database::set_value("last_revive", last_revive).await {
-                    Ok(_) => {}
-                    Err(_) => {
-                        log::error!("Failed to set last revive value");
-                        return;
-                    }
+                if len > 900 {
+                    sleep_duration = 300;
                 }
-                log::info!("Collected {} revives, last revive: {}", len, last_revive);
+
+                if len > 0 {
+                    Database::insert_manny(revives.clone())
+                        .await
+                        .expect("Failed to insert revives");
+
+                    last_revive = revives.last().unwrap().timestamp;
+
+                    match Database::set_value("last_revive", last_revive).await {
+                        Ok(_) => {}
+                        Err(_) => {
+                            log::error!("Failed to set last revive value");
+                            return;
+                        }
+                    }
+                    log::info!("Collected {} revives, last revive: {}", len, last_revive);
+                } else {
+                    log::info!("No new revives found.");
+                }
             }
         }
 
@@ -71,12 +83,6 @@ pub async fn revive_monitor(api_key: String, revive_faction: u64) {
             .await
             .expect("Failed to set last update value");
 
-        let mut minutes = 0;
-        while !UPDATE.load(std::sync::atomic::Ordering::Relaxed) && minutes < 60*6 {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60 / 6)).await;
-            minutes += 1;
-        }
-
-        UPDATE.store(false, std::sync::atomic::Ordering::Relaxed);
+        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(sleep_duration), UPDATE.notified()).await;
     }
 }

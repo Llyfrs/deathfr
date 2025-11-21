@@ -36,3 +36,19 @@ impl DatabaseName for Contract {
         "deathfr"
     }
 }
+
+#[async_trait::async_trait]
+impl crate::database::structures::IndexSetup for Contract {
+    async fn ensure_indexes(client: &mongodb::Client) -> mongodb::error::Result<()> {
+        let db = client.database(Self::database_name());
+        let collection = db.collection::<Contract>(Self::collection_name());
+
+        let model = mongodb::IndexModel::builder()
+            .keys(mongodb::bson::doc! { "contract_id": 1 })
+            .options(mongodb::options::IndexOptions::builder().unique(true).build())
+            .build();
+
+        collection.create_index(model).await?;
+        Ok(())
+    }
+}
