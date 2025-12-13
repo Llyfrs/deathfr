@@ -8,21 +8,96 @@ use crate::database::Database;
 use anyhow::Context as _;
 use log;
 use serenity::prelude::*;
-use shuttle_runtime::SecretStore;
+use serde::Deserialize;
+use std::{env, fs};
 
 use crate::torn_api::{revive_monitor, TornAPI};
 
-#[shuttle_runtime::main]
-async fn serenity(
-    #[shuttle_runtime::Secrets] secrets: SecretStore,
-) -> shuttle_serenity::ShuttleSerenity {
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+struct SecretsConfig {
+    discord_token: String,
+    database_url: String,
+
+    revive_channel: String,
+    revive_role: String,
+    revive_faction_guild_id: String,
+    owner_id: String,
+    admins: Vec<String>,
+
+    revive_faction: String,
+    revive_faction_api_key: String,
+
+    test_api_key: String,
+
+    // Keep this as string so existing Secrets.*.toml values like `DEV = "true"` still work.
+    dev: String,
+}
+
+fn select_secrets_path() -> anyhow::Result<String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+
+    // `--secrets <path>` overrides everything
+    if let Some(i) = args.iter().position(|a| a == "--secrets") {
+        let path = args
+            .get(i + 1)
+            .context("Expected a path after '--secrets'")?;
+        return Ok(path.clone());
+    }
+
+    // Explicit dev/prod flags
+    if args.iter().any(|a| a == "--dev") {
+        return Ok("Secrets.dev.toml".to_string());
+    }
+    if args.iter().any(|a| a == "--prod") {
+        return Ok("Secrets.toml".to_string());
+    }
+
+    // Fallbacks: prefer prod if present, otherwise dev
+    if std::path::Path::new("Secrets.toml").exists() {
+        Ok("Secrets.toml".to_string())
+    } else if std::path::Path::new("Secrets.dev.toml").exists() {
+        Ok("Secrets.dev.toml".to_string())
+    } else {
+        anyhow::bail!(
+            "No secrets file found. Create 'Secrets.toml' or 'Secrets.dev.toml' (or pass '--secrets <path>')."
+        );
+    }
+}
+
+fn parse_u64(field: &'static str, s: &str) -> anyhow::Result<u64> {
+    s.trim()
+        .parse::<u64>()
+        .with_context(|| format!("Invalid u64 for {field}: '{s}'"))
+}
+
+fn parse_bool(field: &'static str, s: &str) -> anyhow::Result<bool> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "y" => Ok(true),
+        "false" | "0" | "no" | "n" => Ok(false),
+        other => anyhow::bail!("Invalid bool for {field}: '{other}'"),
+    }
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn,deathfr=info")).init();
+
+    let secrets_path = select_secrets_path()?;
+    let secrets_raw = fs::read_to_string(&secrets_path)
+        .with_context(|| format!("Failed to read secrets file '{secrets_path}'"))?;
+    let cfg: SecretsConfig = toml::from_str(&secrets_raw)
+        .with_context(|| format!("Failed to parse TOML secrets file '{secrets_path}'"))?;
+
     Database::init(
-        secrets
-            .get("DATABASE_URL")
-            .context("'MONGODB_URI' was not found")?,
+        cfg.database_url.clone(),
     )
     .await
     .expect("Error initializing database");
+
+    Database::ensure_indexes()
+        .await
+        .expect("Error ensuring database indexes");
 
     let api_keys = Database::get_collection::<APIKey>().await.unwrap();
 
@@ -42,48 +117,19 @@ async fn serenity(
         .collect();
 
     let secret = Secrets {
-        revive_channel: secrets
-            .get("REVIVE_CHANNEL")
-            .context("'REVIVE_CHANNEL' was not found")?
-            .parse()
-            .unwrap(),
-        revive_role: secrets
-            .get("REVIVE_ROLE")
-            .context("'REVIVE_ROLE' was not found")?
-            .parse()
-            .unwrap(),
-        revive_faction_guild: secrets
-            .get("REVIVE_FACTION_GUILD_ID")
-            .context("'REVIVE_FACTION_GUILD_ID' was not found")?
-            .parse()
-            .unwrap(),
-        revive_faction: secrets
-            .get("REVIVE_FACTION")
-            .context("'REVIVE_FACTION' was not found")?
-            .parse()
-            .unwrap(),
-        owner_id: secrets
-            .get("OWNER_ID")
-            .context("'OWNER_ID' was not found")?
-            .parse()
-            .unwrap(),
-        revive_faction_api_key: secrets
-            .get("REVIVE_FACTION_API_KEY")
-            .context("'REVIVE_FACTION_API_KEY' was not found")?,
-        test_api_key: secrets
-            .get("TEST_API_KEY")
-            .context("'TEST_API_KEY' was not found")?,
-        dev: secrets
-            .get("DEV")
-            .context("'DEV' was not found")?
-            .parse()
-            .unwrap(),
-        admins: secrets
-            .get("ADMINS")
-            .context("'ADMINS' was not found")?
-            .split(',')
-            .map(|x| x.trim().parse().unwrap())
-            .collect(),
+        revive_channel: parse_u64("REVIVE_CHANNEL", &cfg.revive_channel)?,
+        revive_role: parse_u64("REVIVE_ROLE", &cfg.revive_role)?,
+        revive_faction_guild: parse_u64("REVIVE_FACTION_GUILD_ID", &cfg.revive_faction_guild_id)?,
+        revive_faction: parse_u64("REVIVE_FACTION", &cfg.revive_faction)?,
+        owner_id: parse_u64("OWNER_ID", &cfg.owner_id)?,
+        revive_faction_api_key: cfg.revive_faction_api_key.clone(),
+        test_api_key: cfg.test_api_key.clone(),
+        dev: parse_bool("DEV", &cfg.dev)?,
+        admins: cfg
+            .admins
+            .iter()
+            .map(|x| parse_u64("ADMINS[]", x))
+            .collect::<anyhow::Result<Vec<u64>>>()?,
     };
 
     // let's waste only my API call for testing
@@ -115,17 +161,16 @@ async fn serenity(
     });
 
     // Get the discord token set in `Secrets.toml`
-    let token = secrets
-        .get("DISCORD_TOKEN")
-        .context("'DISCORD_TOKEN' was not found")?;
+    let token = cfg.discord_token.clone();
 
     // Set gateway intents, which decides what events the bot will be notified about
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-    let client = Client::builder(&token, intents)
+    let mut client = Client::builder(&token, intents)
         .event_handler(bot)
         .await
         .expect("Err creating client");
 
-    Ok(client.into())
+    client.start().await?;
+    Ok(())
 }

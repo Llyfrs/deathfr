@@ -31,6 +31,21 @@ impl Database {
         Ok(())
     }
 
+    pub async fn ensure_indexes() -> Result<()> {
+        use crate::database::structures::{
+            Contract, IndexSetup, Player, PlayerCache, ReviveEntry, Verification,
+        };
+
+        let client = Database::get().await.unwrap();
+
+        Contract::ensure_indexes(&client).await?;
+        PlayerCache::ensure_indexes(&client).await?;
+        ReviveEntry::ensure_indexes(&client).await?;
+        Verification::ensure_indexes(&client).await?;
+
+        Ok(())
+    }
+
     pub async fn get() -> Option<Client> {
         let mut db_conn = DB_CONN.lock().await; // Use `await` for the async mutex
 

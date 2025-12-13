@@ -8,7 +8,7 @@ use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, ComponentInterac
 
 
 use serenity::model::application::Interaction;
-use shuttle_runtime::async_trait;
+use serenity::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;

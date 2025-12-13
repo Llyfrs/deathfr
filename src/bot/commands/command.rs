@@ -1,7 +1,7 @@
 use serenity::all::{ Context, EmbedField};
 use serenity::builder::CreateCommand;
 use serenity::model::application::Interaction;
-use shuttle_runtime::async_trait;
+use serenity::async_trait;
 
 #[async_trait]
 pub(crate) trait Commands: Send + Sync {

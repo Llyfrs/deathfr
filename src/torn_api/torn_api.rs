@@ -81,7 +81,12 @@ impl TornAPI {
     accessing keys using this function makes sure their limits are not exceeded,
     and when they run out of calls, it waits for the reset.
      */
-    fn get_key(&mut self) -> Result<APIKey, Box<dyn Error>> {
+    /**
+    Gets the next key to use,
+    accessing keys using this function makes sure their limits are not exceeded,
+    and when they run out of calls, it waits for the reset.
+     */
+    async fn get_key(&mut self) -> Result<APIKey, Box<dyn Error>> {
         let mut key_to_use = self.key_used % self.keys.len();
         let start_key = key_to_use % self.keys.len();
 
@@ -92,10 +97,10 @@ impl TornAPI {
 
             // If we have checked all keys and all of them are out of calls, we wait for the reset.
             if key_to_use == start_key {
-                thread::sleep(Duration::from_secs(max(
+                sleep(Duration::from_secs(max(
                     60 - (chrono::Utc::now().timestamp() - self.last_reset),
                     0,
-                ) as u64));
+                ) as u64)).await;
 
                 if chrono::Utc::now().timestamp() - self.last_reset >= 60 {
                     self.last_reset = chrono::Utc::now().timestamp();
@@ -112,7 +117,7 @@ impl TornAPI {
     }
 
     pub async fn get_player_data(&mut self, player_id: u64) -> Result<Value, Box<dyn Error>> {
-        let key = self.get_key()?;
+        let key = self.get_key().await?;
 
         let url = format!(
             "https://api.torn.com/user/{}?selections=profile&key={}",
@@ -123,7 +128,7 @@ impl TornAPI {
     }
 
     pub async fn get_faction_data(&mut self, faction_id: u64) -> Result<Value, Box<dyn Error>> {
-        let key = self.get_key()?;
+        let key = self.get_key().await?;
 
         let url = format!(
             "https://api.torn.com/faction/{}?selections=basic&key={}",
@@ -136,7 +141,7 @@ impl TornAPI {
     pub async fn get_revives(&mut self, from: u64) -> Option<(Vec<ReviveEntry>, u64)> {
         let mut revives = Vec::new();
 
-        let key = self.get_key().ok()?;
+        let key = self.get_key().await.ok()?;
 
         let url = format!(
             "https://api.torn.com/faction/?selections=revivesfull,basic&from={}&key={}",

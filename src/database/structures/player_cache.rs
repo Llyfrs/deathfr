@@ -36,3 +36,31 @@ impl CollectionName for PlayerCache {
         "player_cache"
     }
 }
+
+#[async_trait::async_trait]
+impl crate::database::structures::IndexSetup for PlayerCache {
+    async fn ensure_indexes(client: &mongodb::Client) -> mongodb::error::Result<()> {
+        let db = client.database(Self::database_name());
+        let collection = db.collection::<PlayerCache>(Self::collection_name());
+
+        // Unique index on user_id
+        let unique_model = mongodb::IndexModel::builder()
+            .keys(mongodb::bson::doc! { "user_id": 1 })
+            .options(mongodb::options::IndexOptions::builder().unique(true).build())
+            .build();
+
+        // TTL index on expire_at
+        let ttl_model = mongodb::IndexModel::builder()
+            .keys(mongodb::bson::doc! { "expire_at": 1 })
+            .options(
+                mongodb::options::IndexOptions::builder()
+                    .expire_after(std::time::Duration::from_secs(0))
+                    .build(),
+            )
+            .build();
+
+        collection.create_index(unique_model).await?;
+        collection.create_index(ttl_model).await?;
+        Ok(())
+    }
+}
