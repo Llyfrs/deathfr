@@ -36,7 +36,8 @@ impl SubmitKey {
             .title("Submit Torn API key")
             .description(
                 "Deathfr uses Torn API keys **only** to:\n\
-                 - Authenticate users when using `/reviveme`.\n\n\
+                 - Authenticate users when using `/reviveme`.\n\
+                 - Some simple / basic requests to check the API key validity. \n\n\
                  
                 Donated keys are rotated and rate limited to **10 requests per minute**. \n\n\
 

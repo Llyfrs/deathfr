@@ -70,7 +70,9 @@ impl TornAPI {
                         self.keys[(self.key_used - 1) % self.keys.len()].owner
                     );
 
-                    self.keys_limits.remove(self.key_used - 1);
+                    let index = (self.key_used - 1) % self.keys.len();
+                    self.keys.remove(index);
+                    self.keys_limits.remove(index);
                 }
             }
 
