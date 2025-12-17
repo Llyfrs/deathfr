@@ -34,6 +34,12 @@ impl TornAPI {
             name: "TornAPI".to_string(),
         }
     }
+
+    /// Add a new API key to the rotation at runtime
+    pub fn add_key(&mut self, key: APIKey) {
+        self.keys.push(key.clone());
+        self.keys_limits.push(key);
+    }
     pub fn set_name(&mut self, name: String) {
         self.name = name;
     }
