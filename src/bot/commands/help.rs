@@ -13,6 +13,7 @@ pub struct Help {
     pub commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,
     pub secrets: Secrets,
 }
+
 impl Help {
     pub fn new(
         commands: Arc<Mutex<Vec<Box<dyn Commands + Send + Sync>>>>,

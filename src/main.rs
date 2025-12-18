@@ -107,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
             if key.valid {
                 Some(torn_api::torn_api::APIKey {
                     key: key.api_key,
-                    rate_limit: 1,
+                    rate_limit: 10,
                     owner: key.name,
                 })
             } else {

@@ -16,12 +16,12 @@ pub struct APIKey {
 
 impl CollectionName for APIKey {
     fn collection_name() -> &'static str {
-        "API Keys"
+        "api_keys"
     }
 }
 
 impl DatabaseName for APIKey {
     fn database_name() -> &'static str {
-        "BigBrother"
+        "deathfr"
     }
 }

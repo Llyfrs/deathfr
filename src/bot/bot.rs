@@ -14,6 +14,7 @@ use crate::bot::commands::report::Report;
 use crate::bot::commands::stats::Stats;
 // Import the trait
 use crate::bot::commands::reviveme::ReviveMe;
+use crate::bot::commands::submitkey::SubmitKey;
 use crate::torn_api::TornAPI;
 
 //**
@@ -52,6 +53,7 @@ impl Bot {
             commands_guard.push(Box::new(Contract::new(secrets.clone(), torn_api.clone())));
             commands_guard.push(Box::new(Stats::new(secrets.clone(), torn_api.clone())));
             commands_guard.push(Box::new(Report::new(secrets.clone(), torn_api.clone())));
+            commands_guard.push(Box::new(SubmitKey::new(secrets.clone(), torn_api.clone())));
             commands_guard.push(Box::new(Help::new(commands.clone(), secrets.clone())));
         }
 
