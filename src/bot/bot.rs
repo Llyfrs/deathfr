@@ -1,5 +1,5 @@
 use log::info;
-use serenity::all::{Context, EventHandler, GuildId, Message, Ready, RoleId};
+use serenity::all::{ChannelId, Context, EventHandler, GuildId, Message, Ready, RoleId};
 use serenity::model::application::Interaction;
 use serenity::async_trait;
 use std::sync::Arc;
@@ -84,8 +84,9 @@ impl EventHandler for Bot {
         if msg
             .mention_roles
             .contains(&RoleId::from(self.secrets.revive_role))
+            && msg.channel_id != ChannelId::from(self.secrets.revive_channel)
         {
-            // Create a message with a clickable slash command
+            // Suggest using /revive command (only shown outside the revive channel)
             let reply = msg
                 .reply(
                     &ctx.http,
