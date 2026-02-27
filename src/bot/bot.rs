@@ -122,11 +122,11 @@ impl EventHandler for Bot {
 
         Command::set_global_commands(&ctx.http, global_commands)
             .await
-            .unwrap();
+            .expect("Failed to register global commands");
         GuildId::from(self.secrets.revive_faction_guild)
             .set_commands(&ctx.http, guild_commands)
             .await
-            .unwrap();
+            .expect("Failed to register guild commands");
 
         info!("All commands registered!");
 
