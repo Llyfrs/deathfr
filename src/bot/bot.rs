@@ -1,7 +1,7 @@
 use log::info;
-use serenity::all::{ChannelId, Context, EventHandler, GuildId, Message, Ready, RoleId};
-use serenity::model::application::Interaction;
+use serenity::all::{ChannelId, Command, Context, EventHandler, GuildId, Message, Ready, RoleId};
 use serenity::async_trait;
+use serenity::model::application::Interaction;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -102,43 +102,31 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // Clears all commands when deployed for cleanup, should not be used in dev mode?
-        if !self.secrets.dev {
-            let cmds = ctx
-                .http
-                .get_guild_commands(GuildId::from(self.secrets.revive_faction_guild))
-                .await
-                .unwrap();
-
-            for cmd in cmds {
-                ctx.http
-                    .delete_guild_command(GuildId::from(self.secrets.revive_faction_guild), cmd.id)
-                    .await
-                    .unwrap();
-            }
-
-            info!("All old commands cleared!");
-        }
-
-        {
-            // Acquire a lock to access the commands
+        let (global_commands, guild_commands) = {
             let commands_guard = self.commands.lock().await;
-            for command in commands_guard.iter() {
-                let cmd = command.register();
+            commands_guard
+                .iter()
+                .map(|c| (c.register(), c.is_global()))
+                .fold(
+                    (Vec::new(), Vec::new()),
+                    |(mut global, mut guild), (cmd, is_global)| {
+                        if is_global {
+                            global.push(cmd);
+                        } else {
+                            guild.push(cmd);
+                        }
+                        (global, guild)
+                    },
+                )
+        };
 
-                if command.is_global() {
-                    ctx.http.create_global_command(&cmd).await.unwrap();
-                } else {
-                    ctx.http
-                        .create_guild_command(
-                            GuildId::from(self.secrets.revive_faction_guild),
-                            &cmd,
-                        )
-                        .await
-                        .unwrap();
-                }
-            }
-        }
+        Command::set_global_commands(&ctx.http, global_commands)
+            .await
+            .unwrap();
+        GuildId::from(self.secrets.revive_faction_guild)
+            .set_commands(&ctx.http, guild_commands)
+            .await
+            .unwrap();
 
         info!("All commands registered!");
 
