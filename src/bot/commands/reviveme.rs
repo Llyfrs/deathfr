@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::bot::tools::create_response::create_response;
+use crate::bot::tools::revive_request::{build_revive_request_message, ReviveRequest};
 use crate::bot::tools::resolve_discord_verification::resolve_discord_verification;
 
 pub struct ReviveMe {
@@ -60,7 +61,7 @@ impl ReviveMe {
                             "status": "active"
                         })).await.unwrap();
 
-        let is_in_contract = contract.len() > 0;
+        let min_contract_chance = contract.first().map(|c| c.min_chance);
 
 
         command
@@ -87,31 +88,18 @@ impl ReviveMe {
 
         */
 
+        let revive_request = ReviveRequest {
+            requester_discord_id: Some(command.user.id.get()),
+            requester_name: user.name,
+            requester_torn_player_id: user.torn_player_id,
+            faction_id: user.faction_id,
+            faction_name: user.faction_name,
+            min_contract_chance,
+        };
+
         let mut message = MessageBuilder::new();
-
-        message.push("Revive request by")
-            .push(format!(
-                " [{} [{}]]({}) ",
-                user.name,
-                user.torn_player_id,
-                player_link(user.torn_player_id)
-            ));
-
-        if user.faction_id != 0 {
-            message.push("from")
-                .push(format!(
-                    " [{}]({}) ",
-                    user.faction_name,
-                    faction_link(user.faction_id)
-                ));
-        }
-
         message.role(RoleId::from(self.secrets.revive_role));
-
-        if is_in_contract {
-            message.push_bold("\nThis player is under contract ");
-            message.push(format!("Revive above {}% chance", contract[0].min_chance));
-        }
+        message.push(build_revive_request_message(&revive_request));
 
         let message = message.build();
 
@@ -130,7 +118,10 @@ impl ReviveMe {
             .unwrap();
 
 
-        self.responses.insert(command.user.id, message.clone());
+        if let Some(requester_discord_id) = revive_request.requester_discord_id {
+            self.responses
+                .insert(UserId::from(requester_discord_id), message.clone());
+        }
         self.cancellation.insert(message.id, command.clone());
     }
 
@@ -232,17 +223,6 @@ impl ReviveMe {
 
     }
 }
-
-fn player_link(id: u64) -> String {
-    //https://www.torn.com/profiles.php?XID=2531272
-    format!("https://www.torn.com/profiles.php?XID={}", id)
-}
-
-fn faction_link(id: u64) -> String {
-    //https://www.torn.com/factions.php?step=profile&ID=14821
-    format!("https://www.torn.com/factions.php?step=profile&ID={}", id)
-}
-
 
 #[async_trait]
 impl Commands for ReviveMe {
