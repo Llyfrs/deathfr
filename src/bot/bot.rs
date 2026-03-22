@@ -90,7 +90,7 @@ impl EventHandler for Bot {
             let reply = msg
                 .reply(
                     &ctx.http,
-                    "Did you know you can now use the /revive command instead? Try it out!",
+                    "Did you know you can now use the /reviveme command instead? Try it out!",
                 )
                 .await;
 
