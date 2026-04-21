@@ -180,12 +180,23 @@ impl Database {
             Err(e) => {
                 if let ErrorKind::InsertMany(ref insert_error) = *e.kind {
                     if let Some(write_errors) = &insert_error.write_errors {
-                        log::warn!("Write errors: {:?}", write_errors);
-
-                        // Check if all errors are duplicate key errors (code 11000)
+                        // Silently ignore if ALL errors are duplicate key errors (code 11000)
                         if write_errors.iter().all(|err| err.code == 11000) {
-                            return Ok(()); // Ignore duplicate key errors
+                            log::debug!(
+                                "Ignored {} duplicate key error(s) in {}::{} (expected overlap)",
+                                write_errors.len(),
+                                T::database_name(),
+                                T::collection_name()
+                            );
+                            return Ok(());
                         }
+
+                        // Only warn if there are non-duplicate errors mixed in
+                        let real_errors: Vec<_> = write_errors
+                            .iter()
+                            .filter(|err| err.code != 11000)
+                            .collect();
+                        log::warn!("Write errors (non-duplicate): {:?}", real_errors);
                     }
                 }
                 Err(e.into()) // Propagate other errors
