@@ -1,5 +1,7 @@
 mod bot;
 mod database;
+mod domain;
+mod services;
 mod torn_api;
 
 use crate::bot::{Bot, Secrets};

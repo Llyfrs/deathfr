@@ -1,11 +1,9 @@
 use crate::bot::commands::command::Commands;
 use crate::bot::Secrets;
-use crate::database::structures::{Contract};
-use crate::database::Database;
+use crate::domain::{Initiator, ReviveTarget};
+use crate::services::{ReviveError, ReviveExecutor};
 use crate::torn_api::TornAPI;
-use mongodb::bson::doc;
 use serenity::all::{ButtonStyle, ChannelId, CommandInteraction, ComponentInteraction, Context, CreateButton, CreateCommand, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, EditMessage, EmbedField, GuildId, InstallationContext, Message, MessageBuilder, MessageId, RoleId, UserId};
-
 
 use serenity::model::application::Interaction;
 use serenity::async_trait;
@@ -23,6 +21,8 @@ pub struct ReviveMe {
     responses: HashMap<UserId, Message>,
     /// Map of ephemeral messages sends it to the user when they ask for reviving
     cancellation: HashMap<MessageId, CommandInteraction>,
+    /// Map of message IDs to request IDs for correlation with the executor
+    request_ids: HashMap<MessageId, String>,
 }
 impl ReviveMe {
     pub fn new(secrets: Secrets, api: Arc<Mutex<TornAPI>>) -> Self {
@@ -31,6 +31,7 @@ impl ReviveMe {
             secrets,
             responses: HashMap::new(),
             cancellation: HashMap::new(),
+            request_ids: HashMap::new(),
         }
     }
 
@@ -53,15 +54,34 @@ impl ReviveMe {
         // Is not None here
         let user = verification.unwrap();
 
+        // Build a protocol-agnostic ReviveTarget from the Verification record.
+        // Because we provide name/faction, the executor will skip the extra Torn API call.
+        let target = ReviveTarget {
+            torn_player_id: user.torn_player_id,
+            name: Some(user.name.clone()),
+            faction_id: user.faction_id,
+            faction_name: Some(user.faction_name.clone()),
+        };
 
-        let contract: Vec<Contract> = Database::get_collection_with_filter(
-            Some(doc! {
-                            "faction_id": user.faction_id as i64,
-                            "status": "active"
-                        })).await.unwrap();
+        // Delegate the business logic to the protocol-agnostic executor.
+        let result = ReviveExecutor::request_revive(
+            target,
+            self.api.clone(),
+            Initiator::Discord(command.user.id.get()),
+        ).await;
 
-        let is_in_contract = contract.len() > 0;
-
+        let revive_result = match result {
+            Ok(r) => r,
+            Err(ReviveError::PlayerNotFound) => {
+                create_response(&ctx, command.clone(), "Player not found on Torn".to_string(), true).await;
+                return;
+            }
+            Err(e) => {
+                log::error!("Revive executor failed for user {:?}: {}", command.user.id, e);
+                create_response(&ctx, command.clone(), format!("Failed to process revive: {}", e), true).await;
+                return;
+            }
+        };
 
         command
             .create_response(
@@ -92,25 +112,25 @@ impl ReviveMe {
         message.push("Revive request by")
             .push(format!(
                 " [{} [{}]]({}) ",
-                user.name,
-                user.torn_player_id,
-                player_link(user.torn_player_id)
+                revive_result.name,
+                revive_result.torn_player_id,
+                player_link(revive_result.torn_player_id)
             ));
 
-        if user.faction_id != 0 {
+        if revive_result.faction_id != 0 {
             message.push("from")
                 .push(format!(
                     " [{}]({}) ",
-                    user.faction_name,
-                    faction_link(user.faction_id)
+                    revive_result.faction_name,
+                    faction_link(revive_result.faction_id)
                 ));
         }
 
         message.role(RoleId::from(self.secrets.revive_role));
 
-        if is_in_contract {
+        if revive_result.is_in_contract {
             message.push_bold("\nThis player is under contract ");
-            message.push(format!("Revive above {}% chance", contract[0].min_chance));
+            message.push(format!("Revive above {}% chance", revive_result.contract_min_chance.unwrap_or(0)));
         }
 
         let message = message.build();
@@ -132,6 +152,7 @@ impl ReviveMe {
 
         self.responses.insert(command.user.id, message.clone());
         self.cancellation.insert(message.id, command.clone());
+        self.request_ids.insert(message.id, revive_result.request_id);
     }
 
     /// Handles situation where user presses the cancel button
@@ -164,6 +185,8 @@ impl ReviveMe {
             .await
             .unwrap();
 
+        // Clean up the request_id mapping if present
+        self.request_ids.remove(&message.id);
     }
 
 
@@ -230,6 +253,8 @@ impl ReviveMe {
             .await
             .unwrap();
 
+        // Clean up the request_id mapping if present
+        self.request_ids.remove(&component.message.id);
     }
 }
 
