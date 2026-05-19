@@ -452,30 +452,40 @@ async fn create_page_embed(
 
     let pages = size.div_ceil(page_size);
 
-    let mut contract_names = String::new();
-    let mut started_ended = String::new();
-    let mut contract_ids = String::new();
+    let mut table = String::from("```\n");
+    table.push_str(&format!(
+        "{:<25} {:<8} {:<8} {:<12}\n",
+        "Name", "Status", "ID", "Started"
+    ));
+    table.push_str(&format!(
+        "{:-<25} {:-<8} {:-<8} {:-<12}\n",
+        "", "", "", ""
+    ));
 
-    for contract in contracts {
-        contract_names.push_str(&format!("{}\n", contract.contract_name));
-        started_ended.push_str(&format!(
-            "{}\n",
-            match contract.status {
-                Status::Active => "Active",
-                Status::Ended => "Ended",
-            }
+    for contract in &contracts {
+        let name = if contract.contract_name.len() > 24 {
+            format!("{}…", &contract.contract_name[..23])
+        } else {
+            contract.contract_name.clone()
+        };
+        let status = match contract.status {
+            Status::Active => "Active",
+            Status::Ended => "Ended",
+        };
+        let started = chrono::DateTime::from_timestamp(contract.started as i64, 0)
+            .map(|dt| dt.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        table.push_str(&format!(
+            "{:<25} {:<8} {:<8} {:<12}\n",
+            name, status, contract.contract_id, started
         ));
-        contract_ids.push_str(&format!("`{}`\n", contract.contract_id));
     }
+    table.push_str("```");
 
     let embed = CreateEmbed::new()
         .title("Contracts")
-        .description("List of contracts")
-        .fields(vec![
-            ("Contract Name", contract_names, true),
-            ("Status", started_ended, true),
-            ("Contract ID", contract_ids, true),
-        ])
+        .description(table)
         .timestamp(Utc::now())
         .footer(CreateEmbedFooter::new(format!(
             "Page {} of {}",
