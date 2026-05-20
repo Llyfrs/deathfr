@@ -1,16 +1,17 @@
 use crate::bot::commands::command::Commands;
+use crate::bot::tools::create_response;
 use crate::bot::Secrets;
 use crate::database::structures::Status;
 use crate::database::Database;
 use crate::torn_api::{request_update, TornAPI};
-use chrono::Utc;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use mongodb::bson;
 use mongodb::bson::{doc, Document};
 use rand::distr::Alphanumeric;
 use rand::Rng;
 use serenity::all::CommandDataOptionValue::SubCommand;
 use serenity::all::{
-    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandInteraction, CommandOptionType,
+    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandOptionType,
     Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter,
     CreateInteractionResponse, CreateInteractionResponseMessage, EmbedField, Interaction,
     MessageId, ReactionType, UserId,
@@ -21,7 +22,6 @@ use serenity::utils::MessageBuilder;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::bot::tools::create_response;
 
 const PAGE_SIZE: u64 = 10;
 
@@ -89,6 +89,14 @@ impl Commands for Contract {
                         "The cut the faction gets from the contract (default 10%)",
                     )
                     .required(false),
+                )
+                .add_sub_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::String,
+                        "start_time",
+                        "Optional contract start time in UTC as YYYY-MM-DD HH:MM",
+                    )
+                    .required(false),
                 ),
             )
             .add_option(
@@ -111,6 +119,7 @@ impl Commands for Contract {
                             "Choose what contracts to list",
                         )
                         .add_string_choice("active", "active")
+                        .add_string_choice("pending", "pending")
                         .add_string_choice("ended", "ended")
                         .add_string_choice("all", "all")
                         .required(true),
@@ -157,19 +166,65 @@ impl Commands for Contract {
                         };
 
                     let faction_cut = sub_options
-                        .get(3) // Returns Option<&CommandDataOptionValue>
-                        .map_or(10u64, |option| { // Default if index out of bounds (or None)
+                        .iter()
+                        .find(|option| option.name == "faction_cut")
+                        .map_or(10u64, |option| {
                             if let CommandDataOptionValue::Integer(value) = option.value {
-                                if value >= 0 { // Explicitly check for negative values
+                                if value >= 0 {
                                     value as u64
                                 } else {
-                                    log::warn!("Received negative value {} for faction_cut, using default.", value); // Or handle as error
-                                    10u64 // Use default if negative
+                                    log::warn!(
+                                        "Received negative value {} for faction_cut, using default.",
+                                        value
+                                    );
+                                    10u64
                                 }
                             } else {
-                                10u64 // Default if correct index but wrong type
+                                10u64
                             }
                         });
+
+                    let start_time = match sub_options.iter().find(|option| option.name == "start_time") {
+                        Some(option) => {
+                            if let CommandDataOptionValue::String(value) = &option.value {
+                                Some(value.clone())
+                            } else {
+                                log::warn!("Missing or invalid 'start_time' value.");
+                                create_response::create_response(
+                                    &ctx,
+                                    command.clone(),
+                                    "Invalid start time format. Use YYYY-MM-DD HH:MM in UTC.".to_string(),
+                                    true,
+                                )
+                                .await;
+                                return;
+                            }
+                        }
+                        None => None,
+                    };
+
+                    let started_at = match start_time {
+                        Some(start_time) => match parse_contract_start_time(&start_time) {
+                            Ok(started_at) => started_at,
+                            Err(error) => {
+                                create_response::create_response(
+                                    &ctx,
+                                    command.clone(),
+                                    error,
+                                    true,
+                                )
+                                .await;
+                                return;
+                            }
+                        },
+                        None => Utc::now(),
+                    };
+
+                    let status = if started_at > Utc::now() {
+                        Status::Pending
+                    } else {
+                        Status::Active
+                    };
 
                     let faction_data = self
                         .api
@@ -198,10 +253,16 @@ impl Commands for Contract {
                         contract_name,
                         faction_id: faction_id as u64,
                         min_chance: min_chance as u64,
-                        started: Utc::now().timestamp() as u64,
+                        started: started_at.timestamp() as u64,
                         ended: 0,
-                        status: Status::Active,
+                        status,
                         faction_cut: faction_cut as i64,
+                    };
+
+                    let status_label = match contract.status {
+                        Status::Active => "active",
+                        Status::Pending => "pending",
+                        Status::Ended => "ended",
                     };
 
                     let message = MessageBuilder::new()
@@ -209,6 +270,9 @@ impl Commands for Contract {
                         .push_mono(contract.contract_id.clone())
                         .push(" at ")
                         .push(format!("<t:{}:f>", contract.started.clone()))
+                        .push(" and is ")
+                        .push(status_label)
+                        .push(".")
                         .build();
 
                     Database::insert(contract).await.unwrap();
@@ -318,6 +382,7 @@ impl Commands for Contract {
 
                     let filter = match status.as_str() {
                         "active" => Some(doc! {"status": bson::to_bson(&Status::Active).unwrap()}),
+                        "pending" => Some(doc! {"status": bson::to_bson(&Status::Pending).unwrap()}),
                         "ended" => Some(doc! {"status": bson::to_bson(&Status::Ended).unwrap()}),
                         "all" => None,
                         _ => {
@@ -408,11 +473,12 @@ impl Commands for Contract {
             vec![
                 EmbedField::new(
                     "/contract start",
-                    "Creates a new contract and immediately starts it. Takes `contract_name` and `faction_id` and `min_chance` as arguments. \n \
+                      "Creates a new contract and starts it immediately unless `start_time` is provided. Takes `contract_name`, `faction_id`, and `min_chance` as arguments. \n \
                            * `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \
                            * `faction_id` is the faction you want to track revives for (if **both defense and offensive revives** are provided two different contracts need to be made \n\
                            * `min_chance` is the minimum revive chance of success to count for payment \n\
                            * `faction_cut` is the cut the faction gets from the contract (defaults to 10% if not set) \n\
+                          * `start_time` is optional and must use `YYYY-MM-DD HH:MM` in UTC. Future times create a pending contract. \n\
                            Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
                     false,
                 ),
@@ -423,7 +489,7 @@ impl Commands for Contract {
                 ),
                 EmbedField::new(
                     "/contract list",
-                    format!("Lists all contracts. Takes `status` as argument. Status can be `active`, `ended`, or `all`. Contracts are separated in to pages by {}", PAGE_SIZE),
+                    format!("Lists all contracts. Takes `status` as argument. Status can be `active`, `pending`, `ended`, or `all`. Contracts are separated in to pages by {}", PAGE_SIZE),
                     false,
                 ),
 
@@ -437,6 +503,8 @@ async fn create_page_embed(
     page_size: u64,
     filter: Option<Document>,
 ) -> CreateInteractionResponseMessage {
+    promote_pending_contracts().await;
+
     let size = Database::get_collection_size(filter.clone()).await.unwrap();
 
     let options = mongodb::options::FindOptions::builder()
@@ -470,6 +538,7 @@ async fn create_page_embed(
         };
         let status = match contract.status {
             Status::Active => "Active",
+            Status::Pending => "Pending",
             Status::Ended => "Ended",
         };
         let started = chrono::DateTime::from_timestamp(contract.started as i64, 0)
@@ -514,6 +583,34 @@ async fn create_page_embed(
 
     message
 }
+
+async fn promote_pending_contracts() {
+    let pending_contracts = Database::get_collection_with_filter::<crate::database::structures::Contract>(Some(
+        doc! {"status": bson::to_bson(&Status::Pending).unwrap()}
+    ))
+    .await
+    .unwrap();
+
+    let now = Utc::now().timestamp() as u64;
+
+    for mut contract in pending_contracts {
+        if contract.started <= now {
+            contract.status = Status::Active;
+            Database::update(contract.clone(), doc! {"contract_id": contract.contract_id.clone()})
+                .await
+                .unwrap();
+        }
+    }
+}
+
+fn parse_contract_start_time(start_time: &str) -> Result<DateTime<Utc>, String> {
+    let parsed = NaiveDateTime::parse_from_str(start_time, "%Y-%m-%d %H:%M").map_err(|_| {
+        "Invalid start time format. Use YYYY-MM-DD HH:MM in UTC.".to_string()
+    })?;
+
+    Ok(DateTime::<Utc>::from_naive_utc_and_offset(parsed, Utc))
+}
+
 fn format_time(time: u64) -> String {
     format!("<t:{}:f>", time)
 }

@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum Status {
     #[serde(rename = "active")]
     Active,
+    #[serde(rename = "pending")]
+    Pending,
     #[serde(rename = "ended")]
     Ended,
 }
