@@ -74,7 +74,15 @@ impl Commands for Report {
                 let contract = contract.unwrap();
 
                 if contract.status != Status::Ended {
-                    create_response(&ctx, command, "Contract is still active. Live reports will be implemented in the future hopefully.".to_string(), true).await;
+                    let msg = match contract.status {
+                        Status::Pending => format!(
+                            "Contract hasn't started yet — it starts <t:{}:f>.",
+                            contract.started
+                        ),
+                        _ => "Contract is still active. Live reports will be implemented in the future hopefully."
+                            .to_string(),
+                    };
+                    create_response(&ctx, command, msg, true).await;
                     return;
                 }
 
