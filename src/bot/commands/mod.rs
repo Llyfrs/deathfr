@@ -1,8 +1,6 @@
-pub(crate) mod command;
-pub(crate) mod contract;
-pub(crate) mod reviveme;
-pub(crate) mod submitkey;
-
+pub mod contract;
 pub mod help;
 pub mod report;
+pub mod reviveme;
 pub mod stats;
+pub mod submitkey;

@@ -2,13 +2,16 @@ mod bot;
 mod database;
 mod torn_api;
 
-use crate::bot::{Bot, Secrets};
+use crate::bot::commands;
+use crate::bot::handler::event_handler;
+use crate::bot::{Data, Secrets};
 use crate::database::structures::APIKey;
 use crate::database::Database;
 use anyhow::Context as _;
 use log;
-use serenity::prelude::*;
 use serde::Deserialize;
+use serenity::all::GuildId;
+use serenity::prelude::*;
 use std::{env, fs};
 
 use crate::torn_api::{revive_monitor, TornAPI};
@@ -149,16 +152,78 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Running in dev mode");
     }
 
-    let mut bot = Bot::new(secret.clone(), api).await;
+    let data = Data::new(secret.clone(), api);
 
-    bot.add_trigger(move |_ctx, _ready| {
-        let revive_faction = secret.revive_faction.clone();
-        let revive_faction_api_key = secret.revive_faction_api_key.clone();
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: vec![
+                commands::reviveme::reviveme(),
+                commands::contract::contract(),
+                commands::stats::stats(),
+                commands::report::report(),
+                commands::submitkey::submitkey(),
+                commands::help::help(),
+            ],
+            event_handler: |ctx, event, framework, data| {
+                Box::pin(event_handler(ctx, event, framework, data))
+            },
+            ..Default::default()
+        })
+        .setup(move |ctx, ready, _framework| {
+            Box::pin(async move {
+                log::info!("{} is connected!", ready.user.name);
 
-        tokio::spawn(async move {
-            revive_monitor(revive_faction_api_key, revive_faction).await;
-        });
-    });
+                let secrets = &data.secrets;
+
+                // Guilds the guild-only commands get registered in. Add more ids here if needed.
+                let guild_ids: Vec<GuildId> = vec![GuildId::from(secrets.revive_faction_guild)];
+
+                // Clears all commands when deployed for cleanup, should not be used in dev mode?
+                if !secrets.dev {
+                    for guild_id in &guild_ids {
+                        let cmds = ctx.http.get_guild_commands(*guild_id).await?;
+                        for cmd in cmds {
+                            ctx.http.delete_guild_command(*guild_id, cmd.id).await?;
+                        }
+                    }
+                    log::info!("All old commands cleared!");
+                }
+
+                let global_commands = poise::builtins::create_application_commands(&[
+                    commands::reviveme::reviveme(),
+                    commands::report::report(),
+                    commands::help::help(),
+                ]);
+
+                let guild_commands = poise::builtins::create_application_commands(&[
+                    commands::contract::contract(),
+                    commands::stats::stats(),
+                    commands::submitkey::submitkey(),
+                ]);
+
+                serenity::all::Command::set_global_commands(&ctx.http, global_commands).await?;
+
+                for guild_id in &guild_ids {
+                    guild_id.set_commands(&ctx.http, guild_commands.clone()).await?;
+                }
+
+                log::info!("All commands registered!");
+
+                {
+                    let revive_faction = secrets.revive_faction;
+                    let revive_faction_api_key = secrets.revive_faction_api_key.clone();
+
+                    tokio::spawn(async move {
+                        revive_monitor(revive_faction_api_key, revive_faction).await;
+                    });
+                }
+
+                log::info!("The bot is ready to go!");
+
+                Ok(data)
+            })
+        })
+        .build();
 
     // Get the discord token set in `Secrets.toml`
     let token = cfg.discord_token.clone();
@@ -167,7 +232,7 @@ async fn main() -> anyhow::Result<()> {
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
     let mut client = Client::builder(&token, intents)
-        .event_handler(bot)
+        .framework(framework)
         .await
         .expect("Err creating client");
 

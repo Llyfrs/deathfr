@@ -1,508 +1,322 @@
-use crate::bot::commands::command::Commands;
-use crate::bot::tools::create_response;
-use crate::bot::Secrets;
+use crate::bot::auth::{level_of, AccessLevel};
+use crate::bot::data::{Context, Data, Error};
 use crate::database::structures::Status;
 use crate::database::Database;
-use crate::torn_api::{request_update, TornAPI};
+use crate::torn_api::request_update;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use mongodb::bson;
 use mongodb::bson::{doc, Document};
+use poise::CreateReply;
 use rand::distr::Alphanumeric;
 use rand::Rng;
-use serenity::all::CommandDataOptionValue::SubCommand;
 use serenity::all::{
-    ButtonStyle, CommandDataOption, CommandDataOptionValue, CommandOptionType,
-    Context, CreateButton, CreateCommand, CreateEmbed, CreateEmbedFooter,
-    CreateInteractionResponse, CreateInteractionResponseMessage, EmbedField, Interaction,
-    MessageId, ReactionType, UserId,
+    ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateEmbed,
+    CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, ReactionType,
+    UserId,
 };
-use serenity::async_trait;
-use serenity::builder::CreateCommandOption;
 use serenity::utils::MessageBuilder;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-const PAGE_SIZE: u64 = 10;
+pub(crate) const PAGE_SIZE: u64 = 10;
 
-pub struct Contract {
-    api: Arc<Mutex<TornAPI>>,
-    secrets: Secrets,
-    responses: HashMap<MessageId, ListMessageInfo>,
-}
-
-struct ListMessageInfo {
+/// Pagination state of a `/contract list` message
+pub struct ListMessageInfo {
     user_id: UserId,
     filter: Option<Document>,
     page: u64,
 }
 
-impl Contract {
-    pub fn new(secrets: Secrets, api: Arc<Mutex<TornAPI>>) -> Self {
-        Self {
-            api,
-            secrets,
-            responses: HashMap::new(),
-        }
-    }
+#[derive(poise::ChoiceParameter)]
+pub enum StatusFilter {
+    #[name = "active"]
+    Active,
+    #[name = "pending"]
+    Pending,
+    #[name = "ended"]
+    Ended,
+    #[name = "all"]
+    All,
 }
 
-#[async_trait]
-impl Commands for Contract {
-    fn register(&self) -> CreateCommand {
-        CreateCommand::new("contract")
-            .description("Manage contracts")
-            .add_option(
-                // Create a new contract
-                CreateCommandOption::new(
-                    CommandOptionType::SubCommand,
-                    "start",
-                    "Create a new contract",
-                )
-                .add_sub_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "contract_name",
-                        "The name of the contract",
-                    )
-                    .required(true),
-                )
-                .add_sub_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "faction_id",
-                        "The ID of the faction for the contract",
-                    )
-                    .required(true),
-                )
-                .add_sub_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "min_chance",
-                        "The minimum chance of success to count for payment",
-                    )
-                    .required(true),
-                ).add_sub_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "faction_cut",
-                        "The cut the faction gets from the contract (default 10%)",
-                    )
-                    .required(false),
-                )
-                .add_sub_option(
-                    CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "start_time",
-                        "Optional contract start time in UTC as YYYY-MM-DD HH:MM",
-                    )
-                    .required(false),
-                ),
-            )
-            .add_option(
-                CreateCommandOption::new(CommandOptionType::SubCommand, "end", "End Contract")
-                    .add_sub_option(
-                        CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "contract_id",
-                            "ID of the contract to end",
-                        )
-                        .required(true),
-                    ),
-            )
-            .add_option(
-                CreateCommandOption::new(CommandOptionType::SubCommand, "list", "List contracts")
-                    .add_sub_option(
-                        CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "status",
-                            "Choose what contracts to list",
-                        )
-                        .add_string_choice("active", "active")
-                        .add_string_choice("pending", "pending")
-                        .add_string_choice("ended", "ended")
-                        .add_string_choice("all", "all")
-                        .required(true),
-                    ),
-            )
+/// Manage contracts
+#[poise::command(slash_command, subcommands("start", "end", "list"))]
+pub async fn contract(_ctx: Context<'_>) -> Result<(), Error> {
+    // Parent command of subcommands, never invoked directly.
+    Ok(())
+}
+
+/// Returns false (and replies) when the invoking user is not an admin.
+async fn ensure_admin(ctx: &Context<'_>) -> Result<bool, Error> {
+    if level_of(ctx) >= AccessLevel::Admin {
+        return Ok(true);
     }
 
-    async fn action(&mut self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(ref command) = interaction {
-            if command.data.name.as_str() != "contract" {
-                return;
-            }
+    log::warn!("Unauthorized user: {}", ctx.author().id);
+    log::warn!("Secret admins: {:?}", ctx.data().secrets.admins);
 
-            let sub_command = command.data.options[0].name.as_str();
+    ctx.send(
+        CreateReply::default()
+            .content("You are not authorized to use this command.")
+            .ephemeral(true),
+    )
+    .await?;
 
-            if sub_command == "start" {
-                if let CommandDataOption {
-                    value: SubCommand(sub_options),
-                    ..
-                } = &command.data.options[0]
-                {
-                    let contract_name =
-                        if let CommandDataOptionValue::String(value) = &sub_options[0].value {
-                            value.clone()
-                        } else {
-                            log::warn!("Missing or invalid 'contract_name' value.");
-                            return;
-                        };
+    Ok(false)
+}
 
-                    let faction_id =
-                        if let CommandDataOptionValue::Integer(value) = &sub_options[1].value {
-                            *value as u64
-                        } else {
-                            log::warn!("Missing or invalid 'faction_id' value.");
-                            return;
-                        };
-
-                    let min_chance =
-                        if let CommandDataOptionValue::Integer(value) = &sub_options[2].value {
-                            *value as u64
-                        } else {
-                            log::warn!("Missing or invalid 'min_chance' value.");
-                            return;
-                        };
-
-                    let faction_cut = sub_options
-                        .iter()
-                        .find(|option| option.name == "faction_cut")
-                        .map_or(10u64, |option| {
-                            if let CommandDataOptionValue::Integer(value) = option.value {
-                                if value >= 0 {
-                                    value as u64
-                                } else {
-                                    log::warn!(
-                                        "Received negative value {} for faction_cut, using default.",
-                                        value
-                                    );
-                                    10u64
-                                }
-                            } else {
-                                10u64
-                            }
-                        });
-
-                    let start_time = match sub_options.iter().find(|option| option.name == "start_time") {
-                        Some(option) => {
-                            if let CommandDataOptionValue::String(value) = &option.value {
-                                Some(value.clone())
-                            } else {
-                                log::warn!("Missing or invalid 'start_time' value.");
-                                create_response::create_response(
-                                    &ctx,
-                                    command.clone(),
-                                    "Invalid start time format. Use YYYY-MM-DD HH:MM in UTC.".to_string(),
-                                    true,
-                                )
-                                .await;
-                                return;
-                            }
-                        }
-                        None => None,
-                    };
-
-                    let started_at = match start_time {
-                        Some(start_time) => match parse_contract_start_time(&start_time) {
-                            Ok(started_at) => started_at,
-                            Err(error) => {
-                                create_response::create_response(
-                                    &ctx,
-                                    command.clone(),
-                                    error,
-                                    true,
-                                )
-                                .await;
-                                return;
-                            }
-                        },
-                        None => Utc::now(),
-                    };
-
-                    let status = if started_at > Utc::now() {
-                        Status::Pending
-                    } else {
-                        Status::Active
-                    };
-
-                    let faction_data = self
-                        .api
-                        .lock()
-                        .await
-                        .get_faction_data(faction_id)
-                        .await
-                        .unwrap();
-
-                    if let Some(error) = faction_data.get("error") {
-                        log::info!("Error: {:?}", error);
-                        create_response::create_response(&ctx, command.clone(), "Invalid faction ID".to_string(), true)
-                            .await;
-                        return;
-                    }
-
-                    log::info!(
-                        "Processing create subcommand with contract_name: {} and faction_id: {}",
-                        contract_name,
-                        faction_id
-                    );
-
-                    let contract = crate::database::structures::Contract {
-                        id: None,
-                        contract_id: generate_contract_id().await,
-                        contract_name,
-                        faction_id: faction_id as u64,
-                        min_chance: min_chance as u64,
-                        started: started_at.timestamp() as u64,
-                        ended: 0,
-                        status,
-                        faction_cut: faction_cut as i64,
-                    };
-
-                    let status_label = match contract.status {
-                        Status::Active => "active",
-                        Status::Pending => "pending",
-                        Status::Ended => "ended",
-                    };
-
-                    let message = MessageBuilder::new()
-                        .push("Contract created with ID: ")
-                        .push_mono(contract.contract_id.clone())
-                        .push(" at ")
-                        .push(format!("<t:{}:f>", contract.started.clone()))
-                        .push(" and is ")
-                        .push(status_label)
-                        .push(".")
-                        .build();
-
-                    Database::insert(contract).await.unwrap();
-
-                    command
-                        .create_response(
-                            &ctx.http,
-                            CreateInteractionResponse::Message(
-                                CreateInteractionResponseMessage::new()
-                                    .content(message)
-                                    .ephemeral(true),
-                            ),
-                        )
-                        .await
-                        .unwrap();
-                } else {
-                    log::warn!("Invalid options structure for 'create' subcommand.");
-                }
-            }
-
-            if sub_command == "end" {
-                if let CommandDataOption {
-                    value: SubCommand(sub_options),
-                    ..
-                } = &command.data.options[0]
-                {
-                    let contract_id =
-                        if let CommandDataOptionValue::String(value) = &sub_options[0].value {
-                            value.clone()
-                        } else {
-                            log::warn!("Missing or invalid 'contract_id' value.");
-                            return;
-                        };
-
-                    log::info!(
-                        "Processing end subcommand with contract_id: {}",
-                        contract_id
-                    );
-
-                    let result: Vec<crate::database::structures::Contract> =
-                        Database::get_collection_with_filter(Some(
-                            doc! {"contract_id": contract_id.clone()},
-                        ))
-                        .await
-                        .unwrap();
-
-                    let mut message = MessageBuilder::new()
-                        .push("No contract found with ID: ")
-                        .push_mono(contract_id.clone())
-                        .build();
-
-                    if result.is_empty() {
-                        log::warn!("No contract found with ID: {}", contract_id);
-                        create_response::create_response(&ctx, command.clone(), message.clone(), true).await;
-                        return;
-                    }
-
-                    let mut contract = result[0].clone();
-
-                    if contract.status == Status::Ended {
-                        message = MessageBuilder::new()
-                            .push("This contract has already ended.")
-                            .build()
-                    } else {
-                        contract.status = Status::Ended;
-                        contract.ended = Utc::now().timestamp() as u64;
-
-                        Database::update(
-                            contract.clone(),
-                            doc! {"contract_id": contract_id.clone()},
-                        )
-                        .await
-                        .unwrap();
-
-                        message = MessageBuilder::new()
-                            .push(format!(
-                                "Contract {} ({}) ended at {}",
-                                contract.contract_name,
-                                contract.contract_id,
-                                format_time(contract.ended)
-                            ))
-                            .build();
-                    }
-
-                    request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
-                    create_response::create_response(&ctx, command.clone(), message.clone(), true).await;
-                } else {
-                    log::warn!("Invalid options structure for 'end' subcommand.");
-                }
-            }
-
-            if sub_command == "list" {
-                log::info!("Processing list subcommand");
-
-                if let CommandDataOption {
-                    value: SubCommand(sub_options),
-                    ..
-                } = &command.data.options[0]
-                {
-                    let status =
-                        if let CommandDataOptionValue::String(value) = &sub_options[0].value {
-                            value.clone()
-                        } else {
-                            log::warn!("Missing or invalid 'status' value.");
-                            return;
-                        };
-
-                    let filter = match status.as_str() {
-                        "active" => Some(doc! {"status": bson::to_bson(&Status::Active).unwrap()}),
-                        "pending" => Some(doc! {"status": bson::to_bson(&Status::Pending).unwrap()}),
-                        "ended" => Some(doc! {"status": bson::to_bson(&Status::Ended).unwrap()}),
-                        "all" => None,
-                        _ => {
-                            log::warn!("Invalid status value: {}", status);
-                            return;
-                        }
-                    };
-
-                    let embed = create_page_embed(1, PAGE_SIZE, filter.clone()).await;
-
-                    command
-                        .create_response(&ctx.http, CreateInteractionResponse::Message(embed))
-                        .await
-                        .unwrap();
-
-                    let message = command.get_response(&ctx.http).await.unwrap();
-
-                    self.responses.insert(
-                        message.id,
-                        ListMessageInfo {
-                            user_id: command.user.id,
-                            filter,
-                            page: 1,
-                        },
-                    );
-                } else {
-                    log::warn!("Invalid options structure for 'list' subcommand.");
-                }
-            }
-        }
-
-        if let Interaction::Component(button) = interaction {
-            log::info!("Processing button interaction");
-
-            if button.data.custom_id != "next" && button.data.custom_id != "previous" {
-                return;
-            }
-
-            let data = self.responses.get_mut(&button.message.id).unwrap();
-            if button.user.id != data.user_id {
-                // Only original author can interact with the buttons on that specific message
-                button.defer(&ctx.http).await.unwrap();
-                return;
-            }
-
-            if button.data.custom_id == "next" {
-                data.page += 1;
-            } else if button.data.custom_id == "previous" {
-                data.page -= 1;
-            }
-
-            let embed = create_page_embed(data.page, PAGE_SIZE, data.filter.clone()).await;
-
-            button
-                .create_response(&ctx.http, CreateInteractionResponse::UpdateMessage(embed))
-                .await
-                .unwrap();
-        }
+/// Create a new contract
+#[poise::command(slash_command)]
+pub async fn start(
+    ctx: Context<'_>,
+    #[description = "The name of the contract"] contract_name: String,
+    #[description = "The ID of the faction for the contract"] faction_id: u64,
+    #[description = "The minimum chance of success to count for payment"] min_chance: u64,
+    #[description = "The cut the faction gets from the contract (default 10%)"] faction_cut: Option<u64>,
+    #[description = "Optional contract start time in UTC as YYYY-MM-DD HH:MM"] start_time: Option<String>,
+) -> Result<(), Error> {
+    if !ensure_admin(&ctx).await? {
+        return Ok(());
     }
 
-    async fn authorized(&self, _ctx: Context, interaction: Interaction) -> bool {
-        match interaction {
-            Interaction::Command(command) => {
-                if self.secrets.admins.contains(&command.user.id.get()) {
-                    true
-                } else {
-                    log::warn!("Unauthorized user: {}", command.user.id);
-                    log::warn!("Secret admins: {:?}", self.secrets.admins);
+    let faction_cut = faction_cut.unwrap_or(10);
 
-                    /*                    if !self.secrets.dev {
-                        let message = MessageBuilder::new()
-                            .push("You are not authorized to use this command.")
-                            .build();
-
-                        create_response(&ctx, command.clone(), message.clone()).await;
-                    }*/
-
-                    false
-                }
+    let started_at = match start_time {
+        Some(start_time) => match parse_contract_start_time(&start_time) {
+            Ok(started_at) => started_at,
+            Err(error) => {
+                ctx.send(CreateReply::default().content(error).ephemeral(true))
+                    .await?;
+                return Ok(());
             }
-            // Button interaction handles it's self in a way that only people authorized in command can interact with the buttons
-            _ => true,
-        }
-    }
+        },
+        None => Utc::now(),
+    };
 
-    fn help(&self) -> Option<Vec<EmbedField>> {
-        Some(
-            vec![
-                EmbedField::new(
-                    "/contract start",
-                      "Creates a new contract and starts it immediately unless `start_time` is provided. Takes `contract_name`, `faction_id`, and `min_chance` as arguments. \n \
-                           * `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \
-                           * `faction_id` is the faction you want to track revives for (if **both defense and offensive revives** are provided two different contracts need to be made \n\
-                           * `min_chance` is the minimum revive chance of success to count for payment \n\
-                           * `faction_cut` is the cut the faction gets from the contract (defaults to 10% if not set) \n\
-                          * `start_time` is optional and must use `YYYY-MM-DD HH:MM` in UTC. Future times create a pending contract. \n\
-                           Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to.",
-                    false,
-                ),
-                EmbedField::new(
-                    "/contract end",
-                    "Ends a contract. Takes `contract_id` as argument. Contract ID is returned when creating a new contract.",
-                    false,
-                ),
-                EmbedField::new(
-                    "/contract list",
-                    format!("Lists all contracts. Takes `status` as argument. Status can be `active`, `pending`, `ended`, or `all`. Contracts are separated in to pages by {}", PAGE_SIZE),
-                    false,
-                ),
+    let status = if started_at > Utc::now() {
+        Status::Pending
+    } else {
+        Status::Active
+    };
 
-            ]
+    let faction_data = ctx
+        .data()
+        .torn_api
+        .lock()
+        .await
+        .get_faction_data(faction_id)
+        .await
+        .unwrap();
+
+    if let Some(error) = faction_data.get("error") {
+        log::info!("Error: {:?}", error);
+        ctx.send(
+            CreateReply::default()
+                .content("Invalid faction ID")
+                .ephemeral(true),
         )
+        .await?;
+        return Ok(());
     }
+
+    log::info!(
+        "Processing create subcommand with contract_name: {} and faction_id: {}",
+        contract_name,
+        faction_id
+    );
+
+    let contract = crate::database::structures::Contract {
+        id: None,
+        contract_id: generate_contract_id().await,
+        contract_name,
+        faction_id,
+        min_chance,
+        started: started_at.timestamp() as u64,
+        ended: 0,
+        status,
+        faction_cut: faction_cut as i64,
+    };
+
+    let status_label = match contract.status {
+        Status::Active => "active",
+        Status::Pending => "pending",
+        Status::Ended => "ended",
+    };
+
+    let message = MessageBuilder::new()
+        .push("Contract created with ID: ")
+        .push_mono(contract.contract_id.clone())
+        .push(" at ")
+        .push(format!("<t:{}:f>", contract.started.clone()))
+        .push(" and is ")
+        .push(status_label)
+        .push(".")
+        .build();
+
+    Database::insert(contract).await.unwrap();
+
+    ctx.send(CreateReply::default().content(message).ephemeral(true))
+        .await?;
+
+    Ok(())
 }
 
-async fn create_page_embed(
+/// End Contract
+#[poise::command(slash_command)]
+pub async fn end(
+    ctx: Context<'_>,
+    #[description = "ID of the contract to end"] contract_id: String,
+) -> Result<(), Error> {
+    if !ensure_admin(&ctx).await? {
+        return Ok(());
+    }
+
+    log::info!("Processing end subcommand with contract_id: {}", contract_id);
+
+    let result: Vec<crate::database::structures::Contract> =
+        Database::get_collection_with_filter(Some(doc! {"contract_id": contract_id.clone()}))
+            .await
+            .unwrap();
+
+    let mut message = MessageBuilder::new()
+        .push("No contract found with ID: ")
+        .push_mono(contract_id.clone())
+        .build();
+
+    if result.is_empty() {
+        log::warn!("No contract found with ID: {}", contract_id);
+        ctx.send(CreateReply::default().content(message).ephemeral(true))
+            .await?;
+        return Ok(());
+    }
+
+    let mut contract = result[0].clone();
+
+    if contract.status == Status::Ended {
+        message = MessageBuilder::new()
+            .push("This contract has already ended.")
+            .build()
+    } else {
+        contract.status = Status::Ended;
+        contract.ended = Utc::now().timestamp() as u64;
+
+        Database::update(contract.clone(), doc! {"contract_id": contract_id.clone()})
+            .await
+            .unwrap();
+
+        message = MessageBuilder::new()
+            .push(format!(
+                "Contract {} ({}) ended at {}",
+                contract.contract_name,
+                contract.contract_id,
+                format_time(contract.ended)
+            ))
+            .build();
+    }
+
+    request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
+    ctx.send(CreateReply::default().content(message).ephemeral(true))
+        .await?;
+
+    Ok(())
+}
+
+/// List contracts
+#[poise::command(slash_command)]
+pub async fn list(
+    ctx: Context<'_>,
+    #[description = "Choose what contracts to list"] status: StatusFilter,
+) -> Result<(), Error> {
+    if !ensure_admin(&ctx).await? {
+        return Ok(());
+    }
+
+    log::info!("Processing list subcommand");
+
+    let filter = match status {
+        StatusFilter::Active => Some(doc! {"status": bson::to_bson(&Status::Active).unwrap()}),
+        StatusFilter::Pending => Some(doc! {"status": bson::to_bson(&Status::Pending).unwrap()}),
+        StatusFilter::Ended => Some(doc! {"status": bson::to_bson(&Status::Ended).unwrap()}),
+        StatusFilter::All => None,
+    };
+
+    let (content, embed, components) = create_page(1, PAGE_SIZE, filter.clone()).await;
+
+    let handle = ctx
+        .send(
+            CreateReply::default()
+                .content(content)
+                .embed(embed)
+                .components(components),
+        )
+        .await?;
+
+    let message = handle.message().await?;
+
+    ctx.data().contract_pages.lock().await.insert(
+        message.id,
+        ListMessageInfo {
+            user_id: ctx.author().id,
+            filter,
+            page: 1,
+        },
+    );
+
+    Ok(())
+}
+
+/// Handles the next/previous pagination buttons on `/contract list` messages
+pub async fn handle_pagination(
+    ctx: &serenity::all::Context,
+    data: &Data,
+    component: &ComponentInteraction,
+) -> Result<(), Error> {
+    log::info!("Processing button interaction");
+
+    let (page, filter) = {
+        let mut pages = data.contract_pages.lock().await;
+
+        let Some(info) = pages.get_mut(&component.message.id) else {
+            // Unknown message (e.g. the bot restarted since the list was created)
+            component.defer(&ctx.http).await?;
+            return Ok(());
+        };
+
+        if component.user.id != info.user_id {
+            // Only original author can interact with the buttons on that specific message
+            component.defer(&ctx.http).await?;
+            return Ok(());
+        }
+
+        if component.data.custom_id == "next" {
+            info.page += 1;
+        } else if component.data.custom_id == "previous" {
+            info.page -= 1;
+        }
+
+        (info.page, info.filter.clone())
+    };
+
+    let (content, embed, components) = create_page(page, PAGE_SIZE, filter).await;
+
+    component
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::new()
+                    .content(content)
+                    .embed(embed)
+                    .components(components),
+            ),
+        )
+        .await?;
+
+    Ok(())
+}
+
+async fn create_page(
     page: u64,
     page_size: u64,
     filter: Option<Document>,
-) -> CreateInteractionResponseMessage {
+) -> (String, CreateEmbed, Vec<CreateActionRow>) {
     promote_pending_contracts().await;
 
     let size = Database::get_collection_size(filter.clone()).await.unwrap();
@@ -561,12 +375,10 @@ async fn create_page_embed(
             page, pages
         )));
 
-    let mut message = CreateInteractionResponseMessage::new()
-        .content("List of contracts")
-        .embed(embed);
+    let mut buttons = Vec::new();
 
     if page > 1 {
-        message = message.button(
+        buttons.push(
             CreateButton::new("previous")
                 .style(ButtonStyle::Primary)
                 .emoji(ReactionType::Unicode("⬅️".to_string())),
@@ -574,14 +386,20 @@ async fn create_page_embed(
     }
 
     if page < pages && pages > 1 {
-        message = message.button(
+        buttons.push(
             CreateButton::new("next")
                 .style(ButtonStyle::Primary)
                 .emoji(ReactionType::Unicode("➡️".to_string())),
         );
     }
 
-    message
+    let components = if buttons.is_empty() {
+        vec![]
+    } else {
+        vec![CreateActionRow::Buttons(buttons)]
+    };
+
+    ("List of contracts".to_string(), embed, components)
 }
 
 async fn promote_pending_contracts() {
