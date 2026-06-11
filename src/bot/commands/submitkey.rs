@@ -17,7 +17,7 @@ use serenity::builder::{CreateActionRow, CreateInputText};
 pub async fn submitkey(ctx: Context<'_>) -> Result<(), Error> {
     // Only allow usage from the configured guild (DMs are fine)
     if let Some(guild_id) = ctx.guild_id() {
-        if guild_id.get() != ctx.data().secrets.revive_faction_guild {
+        if !ctx.data().secrets.is_revive_faction_guild(guild_id.get()) {
             return Ok(());
         }
     }
@@ -56,7 +56,7 @@ pub async fn submitkey(ctx: Context<'_>) -> Result<(), Error> {
 /// Returns true when the interaction may proceed: it either comes from the configured guild or a DM.
 fn allowed_guild(data: &Data, guild_id: Option<serenity::all::GuildId>) -> bool {
     match guild_id {
-        Some(guild_id) => guild_id.get() == data.secrets.revive_faction_guild,
+        Some(guild_id) => data.secrets.is_revive_faction_guild(guild_id.get()),
         None => true,
     }
 }

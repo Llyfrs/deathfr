@@ -21,8 +21,10 @@ pub fn access_level(secrets: &Secrets, user_id: u64, guild_id: Option<u64>) -> A
     if secrets.admins.contains(&user_id) {
         return AccessLevel::Admin;
     }
-    if guild_id == Some(secrets.revive_faction_guild) {
-        return AccessLevel::FactionGuild;
+    if let Some(g) = guild_id {
+        if secrets.is_revive_faction_guild(g) {
+            return AccessLevel::FactionGuild;
+        }
     }
     AccessLevel::Public
 }

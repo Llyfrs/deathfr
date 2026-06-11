@@ -14,13 +14,19 @@ use crate::torn_api::TornAPI;
 pub struct Secrets {
     pub revive_channel: u64,
     pub revive_role: u64,
-    pub revive_faction_guild: u64,
+    pub revive_faction_guilds: Vec<u64>,
     pub revive_faction: u64,
     pub owner_id: u64,
     pub admins: Vec<u64>,
     pub revive_faction_api_key: String,
     pub test_api_key: String,
     pub dev: bool,
+}
+
+impl Secrets {
+    pub fn is_revive_faction_guild(&self, guild_id: u64) -> bool {
+        self.revive_faction_guilds.contains(&guild_id)
+    }
 }
 
 /// Shared state passed to every poise command and event handler via the framework context.

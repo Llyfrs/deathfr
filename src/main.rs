@@ -24,7 +24,7 @@ struct SecretsConfig {
 
     revive_channel: String,
     revive_role: String,
-    revive_faction_guild_id: String,
+    revive_faction_guild_ids: Vec<String>,
     owner_id: String,
     admins: Vec<String>,
 
@@ -122,7 +122,11 @@ async fn main() -> anyhow::Result<()> {
     let secret = Secrets {
         revive_channel: parse_u64("REVIVE_CHANNEL", &cfg.revive_channel)?,
         revive_role: parse_u64("REVIVE_ROLE", &cfg.revive_role)?,
-        revive_faction_guild: parse_u64("REVIVE_FACTION_GUILD_ID", &cfg.revive_faction_guild_id)?,
+        revive_faction_guilds: cfg
+            .revive_faction_guild_ids
+            .iter()
+            .map(|x| parse_u64("REVIVE_FACTION_GUILD_ID[]", x))
+            .collect::<anyhow::Result<Vec<u64>>>()?,
         revive_faction: parse_u64("REVIVE_FACTION", &cfg.revive_faction)?,
         owner_id: parse_u64("OWNER_ID", &cfg.owner_id)?,
         revive_faction_api_key: cfg.revive_faction_api_key.clone(),
@@ -176,7 +180,12 @@ async fn main() -> anyhow::Result<()> {
                 let secrets = &data.secrets;
 
                 // Guilds the guild-only commands get registered in. Add more ids here if needed.
-                let guild_ids: Vec<GuildId> = vec![GuildId::from(secrets.revive_faction_guild)];
+                let guild_ids: Vec<GuildId> = secrets
+                    .revive_faction_guilds
+                    .iter()
+                    .copied()
+                    .map(GuildId::from)
+                    .collect();
 
                 // Clears all commands when deployed for cleanup, should not be used in dev mode?
                 if !secrets.dev {

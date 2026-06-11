@@ -22,7 +22,10 @@ pub async fn reviveme(ctx: Context<'_>) -> Result<(), Error> {
     // this way the command can be tested without pinging the faction server.
     if !secrets.dev
         && ctx.author().id.get() == secrets.owner_id
-        && ctx.guild_id().map(|g| g.get()) != Some(secrets.revive_faction_guild)
+        && !ctx
+            .guild_id()
+            .map(|g| secrets.is_revive_faction_guild(g.get()))
+            .unwrap_or(false)
     {
         return Ok(());
     }
