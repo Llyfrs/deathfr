@@ -229,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
     let token = cfg.discord_token.clone();
 
     // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILDS;
 
     let mut client = Client::builder(&token, intents)
         .framework(framework)
