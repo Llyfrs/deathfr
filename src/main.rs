@@ -256,5 +256,6 @@ async fn main() -> anyhow::Result<()> {
         .expect("Err creating client");
 
     client.start().await?;
+    Database::close().await;
     Ok(())
 }
