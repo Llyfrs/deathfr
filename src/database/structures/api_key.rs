@@ -1,5 +1,4 @@
 use crate::database::structures::{CollectionName, DatabaseName};
-use mongodb::bson;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 

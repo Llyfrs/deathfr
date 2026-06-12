@@ -5,7 +5,6 @@ use serde_json;
 use serde_json::Value;
 use std::cmp::max;
 use std::error::Error;
-use std::thread;
 use tokio::time::{sleep, Duration};
 
 #[derive(Clone)]

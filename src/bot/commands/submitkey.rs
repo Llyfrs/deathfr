@@ -27,13 +27,10 @@ pub async fn submitkey(ctx: Context<'_>) -> Result<(), Error> {
         .title("Submit Torn API key")
         .description(
             "Deathfr uses Torn API keys **only** to:\n\
-             - Authenticate users when using `/reviveme`.\n\
-             - Some simple / basic requests to check the API key validity. \n\n\
-             
-            Donated keys are rotated and rate limited to **10 requests per minute**. \n\n\
-
-            Keys are **not** used to access any other infromation. Revives and other faction relevant information is collected using privatelly passed keys to me by the faction leader.\n\n\
-
+            - Authenticate users when using `/reviveme`.\n\
+            - Some simple / basic requests to check the API key validity.\n\n\
+            Donated keys are rotated and rate limited to **10 requests per minute**.\n\n\
+            Keys are **not** used to access any other information. Revives and other faction relevant information is collected using privately passed keys to me by the faction leader.\n\n\
             If you agree, click **Submit key** below to open the form.",
         );
 

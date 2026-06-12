@@ -33,7 +33,7 @@ impl Database {
 
     pub async fn ensure_indexes() -> Result<()> {
         use crate::database::structures::{
-            Contract, IndexSetup, Player, PlayerCache, ReviveEntry, Verification,
+            Contract, IndexSetup, PlayerCache, ReviveEntry, Verification,
         };
 
         let client = Database::get().await.unwrap();
