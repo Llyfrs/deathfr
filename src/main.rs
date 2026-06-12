@@ -14,7 +14,8 @@ use serenity::all::GuildId;
 use serenity::prelude::*;
 use std::{env, fs};
 
-use crate::torn_api::{revive_monitor, TornAPI};
+use crate::torn_api::{ReviveMonitor, ReviveSourceConfig, TornAPI};
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -130,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         revive_faction: parse_u64("REVIVE_FACTION", &cfg.revive_faction)?,
         owner_id: parse_u64("OWNER_ID", &cfg.owner_id)?,
         revive_faction_api_key: cfg.revive_faction_api_key.clone(),
+        revive_sources: Vec::new(),
         test_api_key: cfg.test_api_key.clone(),
         dev: parse_bool("DEV", &cfg.dev)?,
         admins: cfg
@@ -156,7 +158,17 @@ async fn main() -> anyhow::Result<()> {
         log::info!("Running in dev mode");
     }
 
-    let data = Data::new(secret.clone(), api);
+    let revive_sources = if secret.revive_sources.is_empty() {
+        vec![ReviveSourceConfig {
+            api_key: secret.revive_faction_api_key.clone(),
+            faction_ids: vec![secret.revive_faction],
+        }]
+    } else {
+        secret.revive_sources.clone()
+    };
+
+    let revive_monitor = Arc::new(ReviveMonitor::new(revive_sources));
+    let data = Data::new(secret.clone(), api, revive_monitor.clone());
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -218,14 +230,12 @@ async fn main() -> anyhow::Result<()> {
 
                 log::info!("All commands registered!");
 
-                {
-                    let revive_faction = secrets.revive_faction;
-                    let revive_faction_api_key = secrets.revive_faction_api_key.clone();
-
-                    tokio::spawn(async move {
-                        revive_monitor(revive_faction_api_key, revive_faction).await;
-                    });
-                }
+                tokio::spawn({
+                    let monitor = data.revive_monitor.clone();
+                    async move {
+                        monitor.run_loop().await;
+                    }
+                });
 
                 log::info!("The bot is ready to go!");
 

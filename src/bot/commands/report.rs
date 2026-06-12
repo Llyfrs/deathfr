@@ -25,7 +25,7 @@ pub async fn report(
     .unwrap()
     .pop();
 
-    let Some(contract) = contract else {
+    let Some(mut contract) = contract else {
         ctx.send(
             CreateReply::default()
                 .content("Contract not found")
@@ -49,7 +49,39 @@ pub async fn report(
         return Ok(());
     }
 
-    //Between start and end
+    let syncing_status = if !contract.revives_synced {
+        ctx.defer().await?;
+        let status = ctx
+            .send(
+                CreateReply::default().content("Generating report — syncing revive data…"),
+            )
+            .await?;
+
+        if let Err(e) = ctx
+            .data()
+            .revive_monitor
+            .sync_for_contract(contract.ended)
+            .await
+        {
+            status
+                .edit(
+                    ctx,
+                    CreateReply::default()
+                        .content(format!("Failed to sync revive data: {e:#}")),
+                )
+                .await?;
+            return Ok(());
+        }
+
+        contract.revives_synced = true;
+        Database::update(contract.clone(), doc! {"contract_id": contract_id.clone()})
+            .await
+            .unwrap();
+
+        Some(status)
+    } else {
+        None
+    };
 
     let revives = Database::get_collection_with_filter::<ReviveEntry>(Some(doc! {
         "timestamp": {
@@ -158,6 +190,10 @@ pub async fn report(
             true,
         );
     };
+
+    if let Some(status) = syncing_status {
+        status.delete(ctx).await?;
+    }
 
     ctx.send(CreateReply::default().embed(embed)).await?;
 

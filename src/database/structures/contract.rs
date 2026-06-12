@@ -25,6 +25,8 @@ pub struct Contract {
     pub(crate) ended: u64,
     pub(crate) status: Status,
     pub(crate) faction_cut: i64,
+    #[serde(default)]
+    pub(crate) revives_synced: bool,
 }
 
 

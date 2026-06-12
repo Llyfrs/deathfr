@@ -2,7 +2,6 @@ use crate::bot::auth::{level_of, AccessLevel};
 use crate::bot::data::{Context, Data, Error};
 use crate::database::structures::Status;
 use crate::database::Database;
-use crate::torn_api::request_update;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use mongodb::bson;
 use mongodb::bson::{doc, Document};
@@ -133,6 +132,7 @@ pub async fn start(
         ended: 0,
         status,
         faction_cut: faction_cut as i64,
+        revives_synced: false,
     };
 
     let status_label = match contract.status {
@@ -212,7 +212,6 @@ pub async fn end(
             .build();
     }
 
-    request_update(); // Request an update to the revived monitor, so when a report is called it can be up to date
     ctx.send(CreateReply::default().content(message).ephemeral(true))
         .await?;
 

@@ -1,88 +1,176 @@
 use crate::database::Database;
 use crate::torn_api::torn_api::APIKey;
 use crate::torn_api::TornAPI;
-use tokio::sync::Notify;
-use std::sync::LazyLock;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
 
-static UPDATE: LazyLock<Notify> = LazyLock::new(|| Notify::new());
-pub fn request_update() {
-    UPDATE.notify_one();
+#[derive(Debug, Clone)]
+pub struct ReviveSourceConfig {
+    pub api_key: String,
+    pub faction_ids: Vec<u64>,
 }
 
-/// Periodically collect revives from Torn API and store them in the database
-///
-/// Update can be forced by calling `request_update`
-///
-/// TODO: Recreate log function form samwise (will need to be run from bot with context)
-pub async fn revive_monitor(api_key: String, revive_faction: u64) {
-    log::info!("Starting revive monitor");
+struct ReviveSource {
+    api: Mutex<TornAPI>,
+    faction_ids: Vec<u64>,
+}
 
-    let mut api = TornAPI::new(vec![APIKey {
-        key: api_key,
-        rate_limit: 2,
-        owner: "Piasta Key for Revives".to_string(),
-    }]);
+struct SourceSyncResult {
+    inserted: usize,
+    has_backlog: bool,
+}
 
-    api.set_name("Revive Monitor (Deathfr)".to_string());
+pub struct SyncResult {
+    pub total_inserted: usize,
+    pub has_backlog: bool,
+}
 
-    log::info!("Getting last_revive from database...");
-    let mut last_revive: u64 = Database::get_value("last_revive").await.unwrap_or(1);
-    log::info!("Got last_revive: {}", last_revive);
+pub struct ReviveMonitor {
+    sources: Vec<ReviveSource>,
+    sync_lock: Mutex<()>,
+}
 
-    loop {
-        let mut sleep_duration = 3600;
-        log::info!("Fetching revives from API...");
+impl ReviveMonitor {
+    pub fn new(configs: Vec<ReviveSourceConfig>) -> Self {
+        let sources = configs
+            .into_iter()
+            .map(|config| {
+                let mut api = TornAPI::new(vec![APIKey {
+                    key: config.api_key,
+                    rate_limit: 2,
+                    owner: "Revive Monitor Key".to_string(),
+                }]);
+                api.set_name("Revive Monitor (Deathfr)".to_string());
+                ReviveSource {
+                    api: Mutex::new(api),
+                    faction_ids: config.faction_ids,
+                }
+            })
+            .collect();
+
+        Self {
+            sources,
+            sync_lock: Mutex::new(()),
+        }
+    }
+
+    fn last_revive_key(faction_id: u64) -> String {
+        format!("last_revive_{faction_id}")
+    }
+
+    async fn get_last_revive(faction_id: u64) -> u64 {
+        Database::get_value(&Self::last_revive_key(faction_id))
+            .await
+            .unwrap_or(1)
+    }
+
+    async fn set_last_revive(faction_id: u64, timestamp: u64) -> anyhow::Result<()> {
+        Database::set_value(&Self::last_revive_key(faction_id), timestamp).await?;
+        Ok(())
+    }
+
+    async fn sync_source(source: &ReviveSource) -> anyhow::Result<SourceSyncResult> {
+        let primary_faction = source
+            .faction_ids
+            .first()
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Revive source has no faction IDs configured"))?;
+
+        let mut last_revive = Self::get_last_revive(primary_faction).await;
+        let mut api = source.api.lock().await;
         let revives = api.get_revives(last_revive).await;
-        log::info!("Fetched revives");
 
         match revives {
             None => {
                 log::error!("Failed to collect revives");
+                Ok(SourceSyncResult {
+                    inserted: 0,
+                    has_backlog: false,
+                })
             }
             Some((revives, id)) => {
-                // Foolproof faction ID check
-                // so that if API owner changes a faction
-                // AND get API access we don't collect
-                // and more importantly don't update last_revive
-                if id != revive_faction {
+                if !source.faction_ids.contains(&id) {
                     log::error!(
-                        "Faction ID mismatch, expected: {}, got: {}",
-                        revive_faction,
+                        "Faction ID mismatch, expected one of {:?}, got {}",
+                        source.faction_ids,
                         id
                     );
-                    return;
+                    return Ok(SourceSyncResult {
+                        inserted: 0,
+                        has_backlog: false,
+                    });
                 }
 
                 let len = revives.len();
-                if len > 900 {
-                    sleep_duration = 300;
-                }
+                let has_backlog = len > 900;
 
                 if len > 0 {
-                    Database::insert_manny(revives.clone())
-                        .await
-                        .expect("Failed to insert revives");
-
+                    Database::insert_manny(revives.clone()).await?;
                     last_revive = revives.last().unwrap().timestamp;
-
-                    match Database::set_value("last_revive", last_revive).await {
-                        Ok(_) => {}
-                        Err(_) => {
-                            log::error!("Failed to set last revive value");
-                            return;
-                        }
-                    }
-                    log::info!("Collected {} revives, last revive: {}", len, last_revive);
+                    Self::set_last_revive(id, last_revive).await?;
+                    log::info!("Collected {len} revives for faction {id}, last revive: {last_revive}");
                 } else {
-                    log::info!("No new revives found.");
+                    log::info!("No new revives found for faction {id}.");
+                }
+
+                Ok(SourceSyncResult {
+                    inserted: len,
+                    has_backlog,
+                })
+            }
+        }
+    }
+
+    pub async fn sync_once(&self) -> anyhow::Result<SyncResult> {
+        let _guard = self.sync_lock.lock().await;
+
+        let mut total_inserted = 0;
+        let mut has_backlog = false;
+
+        for source in &self.sources {
+            match Self::sync_source(source).await {
+                Ok(result) => {
+                    total_inserted += result.inserted;
+                    has_backlog |= result.has_backlog;
+                }
+                Err(e) => {
+                    log::error!("Revive source sync failed: {e:#}");
                 }
             }
         }
 
-        Database::set_value("last_update", chrono::Utc::now().timestamp())
-            .await
-            .expect("Failed to set last update value");
+        Database::set_value("last_update", chrono::Utc::now().timestamp()).await?;
 
-        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(sleep_duration), UPDATE.notified()).await;
+        Ok(SyncResult {
+            total_inserted,
+            has_backlog,
+        })
+    }
+
+    pub async fn sync_for_contract(&self, _contract_ended: u64) -> anyhow::Result<SyncResult> {
+        loop {
+            let result = self.sync_once().await?;
+            if result.total_inserted == 0 || !result.has_backlog {
+                return Ok(result);
+            }
+        }
+    }
+
+    pub async fn run_loop(self: Arc<Self>) {
+        log::info!("Starting revive monitor loop");
+
+        loop {
+            let sleep_duration = match self.sync_once().await {
+                Ok(result) if result.has_backlog => 300,
+                Ok(_) => 3600,
+                Err(e) => {
+                    log::error!("Revive monitor sync failed: {e:#}");
+                    3600
+                }
+            };
+
+            tokio::time::sleep(Duration::from_secs(sleep_duration)).await;
+        }
     }
 }
