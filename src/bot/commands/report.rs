@@ -206,23 +206,7 @@ pub async fn report(
         status.delete(ctx).await?;
     }
 
-    // Send the main report embed as a standalone channel message instead of
-    // an interaction reply, so Discord doesn't show "Original message was
-    // deleted" when users delete their command invocation while the report is
-    // being generated.
-    ctx.channel_id()
-        .send_message(ctx.serenity_context(), CreateMessage::new().embed(embed))
-        .await?;
-
-    // Dismiss the deferred interaction with an ephemeral confirmation so
-    // Discord doesn't show "bot is thinking..." indefinitely.
-    let _ = ctx
-        .send(
-            CreateReply::default()
-                .content("Report generated above.")
-                .ephemeral(true),
-        )
-        .await;
+    ctx.send(CreateReply::default().embed(embed)).await?;
 
     // List of rewards is only for admins
     if !is_admin {
