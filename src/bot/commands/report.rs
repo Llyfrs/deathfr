@@ -83,13 +83,19 @@ pub async fn report(
         None
     };
 
+    let reviving_faction_ids = secrets.reviving_faction_ids();
+    let reviver_faction_filter: Vec<Bson> = reviving_faction_ids
+        .iter()
+        .map(|id| Bson::Int64(*id as i64))
+        .collect();
+
     let revives = Database::get_collection_with_filter::<ReviveEntry>(Some(doc! {
         "timestamp": {
             "$gte": Bson::Int64(contract.started as i64),
             "$lte": Bson::Int64(contract.ended as i64)
         },
         "target_faction": Bson::Int64(contract.faction_id as i64),
-        "reviver_faction": Bson::Int64(secrets.revive_faction as i64)
+        "reviver_faction": { "$in": reviver_faction_filter }
     }))
     .await
     .unwrap();
@@ -121,12 +127,21 @@ pub async fn report(
         .await
         .unwrap();
 
-    let faction_data_reviver = api
-        .lock()
-        .await
-        .get_faction_data(secrets.revive_faction)
-        .await
-        .unwrap();
+    let mut reviver_faction_labels = Vec::new();
+    for id in &reviving_faction_ids {
+        let faction_data = api.lock().await.get_faction_data(*id).await.unwrap();
+        reviver_faction_labels.push(format!(
+            "{} ({})",
+            faction_data["name"].as_str().unwrap(),
+            faction_data["ID"].as_u64().unwrap()
+        ));
+    }
+
+    let reviver_field_name = if reviving_faction_ids.len() == 1 {
+        "Reviving Faction"
+    } else {
+        "Reviving Factions"
+    };
 
     let price = vec![
         format_with_commas((successful * 900000 + failed * 1000000) as u64),
@@ -140,12 +155,8 @@ pub async fn report(
         .title(contract.contract_name.clone() + " Report")
         .description(" ")
         .field(
-            "Reviving Faction",
-            format!(
-                "{} ({})",
-                faction_data_reviver["name"].as_str().unwrap(),
-                faction_data_reviver["ID"].as_u64().unwrap()
-            ),
+            reviver_field_name,
+            reviver_faction_labels.join("\n"),
             true,
         )
         .field(
