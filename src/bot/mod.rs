@@ -4,4 +4,4 @@ pub mod data;
 pub mod handler;
 mod tools;
 
-pub use data::{Data, Secrets};
+pub use data::{Data, LoadedSecrets, Secrets};
