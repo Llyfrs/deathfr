@@ -146,6 +146,10 @@ async fn main() -> anyhow::Result<()> {
 
                 log::info!("The bot is ready to go!");
 
+                if let Err(e) = bot::startup::notify_startup(&ctx, secrets).await {
+                    log::error!("Failed to send startup notification: {e:#}");
+                }
+
                 Ok(data)
             })
         })
