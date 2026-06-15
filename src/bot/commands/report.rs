@@ -100,15 +100,15 @@ pub async fn report(
     .await
     .unwrap();
 
-    let mut per_player: HashMap<u64, Vec<ReviveEntry>> = HashMap::new();
+    let mut per_faction_player: HashMap<(u64, u64), Vec<ReviveEntry>> = HashMap::new();
     let mut successful = 0;
     let mut failed = 0;
     let len = revives.len();
 
     for revive in revives {
-        per_player
-            .entry(revive.reviver_id)
-            .or_insert(Vec::new())
+        per_faction_player
+            .entry((revive.reviver_faction, revive.reviver_id))
+            .or_default()
             .push(revive.clone());
 
         if revive.result == "success" {
@@ -127,14 +127,17 @@ pub async fn report(
         .await
         .unwrap();
 
+    let mut faction_names: HashMap<u64, String> = HashMap::new();
     let mut reviver_faction_labels = Vec::new();
     for id in &reviving_faction_ids {
         let faction_data = api.lock().await.get_faction_data(*id).await.unwrap();
-        reviver_faction_labels.push(format!(
+        let label = format!(
             "{} ({})",
             faction_data["name"].as_str().unwrap(),
             faction_data["ID"].as_u64().unwrap()
-        ));
+        );
+        faction_names.insert(*id, label.clone());
+        reviver_faction_labels.push(label);
     }
 
     let reviver_field_name = if reviving_faction_ids.len() == 1 {
@@ -213,63 +216,86 @@ pub async fn report(
         return Ok(());
     }
 
-    let mut reward_list = Vec::new();
+    let mut per_faction_rewards: HashMap<u64, Vec<(u64, String)>> = HashMap::new();
 
-    for id in per_player.keys() {
-        // I could get the name, but latter when I talk it over I will
-        // probably also need the revive skill, now if the report has many players involved
-        // and it hits the rate limit, it will be a real problem as the API will freeze,
-        // here any everywhere else.
-        // TODO : I will probably need some type of cashing system for the skill the will be updated based on revive_monitor.
-        let player_data = match get_player_cache(*id, &mut *api.lock().await).await {
+    for ((faction_id, player_id), entries) in &per_faction_player {
+        // TODO: caching system for revive skill to avoid rate limits on large reports
+        let player_data = match get_player_cache(*player_id, &mut *api.lock().await).await {
             Some(player) => player,
             None => continue,
         };
 
-        let player_name = player_data.name.clone();
-
-        let success = per_player[id]
+        let success = entries
             .iter()
             .filter(|r| r.result == "success")
             .count();
 
-        let failed_counted = per_player[id]
+        let failed_counted = entries
             .iter()
             .filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure")
             .count();
 
-        let _failed = per_player[id].len() - (failed_counted + success);
+        let amount = (success * 900000 + failed_counted * 1000000) as u64;
 
-        reward_list.push((
-            (success * 900000 + failed_counted * 1000000) as u64, // Monetary value for sorting
-            format!(
-                "* **{} [{}]** - ${} (s: {}, f: {})",
-                player_name,
-                id,
-                format_with_commas((success * 900000 + failed_counted * 1000000) as u64),
-                success,
-                failed_counted
-            ),
-        ));
+        per_faction_rewards
+            .entry(*faction_id)
+            .or_default()
+            .push((
+                amount,
+                format!(
+                    "* **{} [{}]** - ${} (s: {}, f: {})",
+                    player_data.name,
+                    player_id,
+                    format_with_commas(amount),
+                    success,
+                    failed_counted
+                ),
+            ));
     }
 
-    reward_list.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut factions: Vec<(u64, u64, u64, Vec<(u64, String)>)> = per_faction_rewards
+        .into_iter()
+        .filter(|(_, players)| !players.is_empty())
+        .map(|(faction_id, mut players)| {
+            players.sort_by(|a, b| b.0.cmp(&a.0));
+            let base_total: u64 = players.iter().map(|(amount, _)| *amount).sum();
+            let final_total =
+                (base_total as f64 * (1.0 + contract.faction_cut as f64 / 100.0)) as u64;
+            (faction_id, base_total, final_total, players)
+        })
+        .collect();
 
-    let pages = reward_list.chunks(10).collect::<Vec<_>>();
+    factions.sort_by(|a, b| b.2.cmp(&a.2));
 
-    for (i, page) in pages.iter().enumerate() {
-        let embed = CreateEmbed::new()
-            .title(format!("Rewards ({}/{})", i + 1, pages.len()))
-            .description(
-                page.iter()
-                    .map(|(_, s)| s.as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
+    for (faction_id, base_total, final_total, players) in factions {
+        let faction_label = faction_names
+            .get(&faction_id)
+            .cloned()
+            .unwrap_or_else(|| faction_id.to_string());
 
-        ctx.channel_id()
-            .send_message(ctx.serenity_context(), CreateMessage::new().embed(embed))
-            .await?;
+        let header = format!(
+            "**{}**\nEarned: ${} | Final (+{}%): ${}\n",
+            faction_label,
+            format_with_commas(base_total),
+            contract.faction_cut,
+            format_with_commas(final_total),
+        );
+
+        let lines: Vec<String> = players.iter().map(|(_, line)| line.clone()).collect();
+        let page_descriptions = paginate_reward_descriptions(&header, &lines, &faction_label);
+        let total_pages = page_descriptions.len();
+
+        for (i, description) in page_descriptions.iter().enumerate() {
+            let title = rewards_embed_title(&faction_label, i + 1, total_pages);
+
+            let embed = CreateEmbed::new()
+                .title(title)
+                .description(description);
+
+            ctx.channel_id()
+                .send_message(ctx.serenity_context(), CreateMessage::new().embed(embed))
+                .await?;
+        }
     }
 
     Ok(())
@@ -284,4 +310,65 @@ fn format_with_commas(number: u64) -> String {
         }
     }
     chars.into_iter().collect()
+}
+
+// https://discord.com/developers/docs/resources/message#embed-object-embed-limits
+const EMBED_DESCRIPTION_LIMIT: usize = 4096;
+const EMBED_TOTAL_LIMIT: usize = 6000;
+const EMBED_SAFETY_BUFFER: usize = 512;
+
+fn char_len(s: &str) -> usize {
+    s.chars().count()
+}
+
+fn rewards_embed_title(faction_label: &str, page: usize, total_pages: usize) -> String {
+    if total_pages <= 1 {
+        format!("Rewards — {faction_label}")
+    } else {
+        format!("Rewards — {faction_label} ({page}/{total_pages})")
+    }
+}
+
+fn embed_description_budget(title: &str) -> usize {
+    EMBED_DESCRIPTION_LIMIT
+        .min(EMBED_TOTAL_LIMIT.saturating_sub(char_len(title)))
+        .saturating_sub(EMBED_SAFETY_BUFFER)
+}
+
+fn paginate_reward_descriptions(
+    header: &str,
+    lines: &[String],
+    faction_label: &str,
+) -> Vec<String> {
+    if lines.is_empty() {
+        return vec![header.trim_end().to_string()];
+    }
+
+    // Size pages against the longest plausible title so real titles always fit.
+    let sizing_title = rewards_embed_title(faction_label, 999, 999);
+    let max_desc = embed_description_budget(&sizing_title);
+
+    let mut pages: Vec<String> = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+
+    for line in lines {
+        let trial = if current.is_empty() {
+            format!("{header}{line}")
+        } else {
+            format!("{header}{}\n{line}", current.join("\n"))
+        };
+
+        if current.is_empty() || char_len(&trial) <= max_desc {
+            current.push(line);
+        } else {
+            pages.push(format!("{header}{}", current.join("\n")));
+            current = vec![line];
+        }
+    }
+
+    if !current.is_empty() {
+        pages.push(format!("{header}{}", current.join("\n")));
+    }
+
+    pages
 }
