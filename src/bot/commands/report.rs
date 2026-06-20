@@ -3,6 +3,7 @@ use crate::bot::data::{Context, Error};
 use crate::bot::tools::get_player_cache::get_player_cache;
 use crate::database::structures::{Contract, ReviveEntry, Status};
 use crate::database::Database;
+use crate::pricing::{classify_revive, ReviveClass, ReviveCounts};
 use mongodb::bson::{doc, Bson};
 use poise::CreateReply;
 use serenity::builder::{CreateEmbed, CreateMessage};
@@ -111,10 +112,10 @@ pub async fn report(
             .or_default()
             .push(revive.clone());
 
-        if revive.result == "success" {
-            successful += 1;
-        } else if revive.chance > contract.min_chance as f32 {
-            failed += 1;
+        match classify_revive(&revive, contract.min_chance) {
+            ReviveClass::Success => successful += 1,
+            ReviveClass::FailedCounted => failed += 1,
+            ReviveClass::Ignored => {}
         }
     }
 
@@ -146,12 +147,17 @@ pub async fn report(
         "Reviving Factions"
     };
 
+    let breakdown = contract.pricing_type.calculate(
+        ReviveCounts {
+            successful: successful as u64,
+            failed_counted: failed as u64,
+        },
+        contract.faction_cut,
+    );
+
     let price = vec![
-        format_with_commas((successful * 900000 + failed * 1000000) as u64),
-        format_with_commas(
-            (successful * 900000 + failed * 1000000) as u64
-                * (1.0 + contract.faction_cut as f64 / 100.0) as u64,
-        ),
+        format_with_commas(breakdown.base),
+        format_with_commas(breakdown.final_with_markup),
     ];
 
     let mut embed = CreateEmbed::new()
@@ -196,10 +202,7 @@ pub async fn report(
             format!("Final Price (+{}%)", contract.faction_cut),
             format!(
                 "${}",
-                format_with_commas(
-                    ((successful * 900000 + failed * 1000000) as f64
-                        * (1.0 + contract.faction_cut as f64 / 100.0)) as u64
-                )
+                format_with_commas(breakdown.final_with_markup)
             ),
             true,
         );
@@ -225,17 +228,27 @@ pub async fn report(
             None => continue,
         };
 
-        let success = entries
-            .iter()
-            .filter(|r| r.result == "success")
-            .count();
+        let mut success = 0u64;
+        let mut failed_counted = 0u64;
+        let mut failed_ignored = 0u64;
+        for entry in entries {
+            match classify_revive(entry, contract.min_chance) {
+                ReviveClass::Success => success += 1,
+                ReviveClass::FailedCounted => failed_counted += 1,
+                ReviveClass::Ignored => failed_ignored += 1,
+            }
+        }
 
-        let failed_counted = entries
-            .iter()
-            .filter(|r| r.chance >= contract.min_chance as f32 && r.result == "failure")
-            .count();
-
-        let amount = (success * 900000 + failed_counted * 1000000) as u64;
+        let amount = contract
+            .pricing_type
+            .calculate(
+                ReviveCounts {
+                    successful: success,
+                    failed_counted,
+                },
+                0,
+            )
+            .base;
 
         per_faction_rewards
             .entry(*faction_id)
@@ -243,12 +256,13 @@ pub async fn report(
             .push((
                 amount,
                 format!(
-                    "* **{} [{}]** - ${} (s: {}, f: {})",
+                    "* **{} [{}]** - ${} (s: {}, f: {}, fi: {})",
                     player_data.name,
                     player_id,
                     format_with_commas(amount),
                     success,
-                    failed_counted
+                    failed_counted,
+                    failed_ignored
                 ),
             ));
     }
@@ -259,8 +273,8 @@ pub async fn report(
         .map(|(faction_id, mut players)| {
             players.sort_by(|a, b| b.0.cmp(&a.0));
             let base_total: u64 = players.iter().map(|(amount, _)| *amount).sum();
-            let final_total =
-                (base_total as f64 * (1.0 + contract.faction_cut as f64 / 100.0)) as u64;
+            let final_total = (base_total as f64 * (1.0 + contract.faction_cut as f64 / 100.0))
+                .round() as u64;
             (faction_id, base_total, final_total, players)
         })
         .collect();

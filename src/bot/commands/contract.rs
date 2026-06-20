@@ -2,6 +2,7 @@ use crate::bot::auth::{level_of, AccessLevel};
 use crate::bot::data::{Context, Data, Error};
 use crate::database::structures::Status;
 use crate::database::Database;
+use crate::pricing::PricingType;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use mongodb::bson;
 use mongodb::bson::{doc, Document};
@@ -34,6 +35,23 @@ pub enum StatusFilter {
     Ended,
     #[name = "all"]
     All,
+}
+
+#[derive(poise::ChoiceParameter)]
+pub enum PricingChoice {
+    #[name = "external"]
+    External,
+    #[name = "inter_alliance"]
+    InterAlliance,
+}
+
+impl From<PricingChoice> for PricingType {
+    fn from(choice: PricingChoice) -> Self {
+        match choice {
+            PricingChoice::External => PricingType::External,
+            PricingChoice::InterAlliance => PricingType::InterAlliance,
+        }
+    }
 }
 
 /// Manage contracts
@@ -69,14 +87,17 @@ pub async fn start(
     #[description = "The name of the contract"] contract_name: String,
     #[description = "The ID of the faction for the contract"] faction_id: u64,
     #[description = "The minimum chance of success to count for payment"] min_chance: u64,
-    #[description = "The cut the faction gets from the contract (default 10%)"] faction_cut: Option<u64>,
+    #[description = "Pricing tier for this contract"] pricing_type: PricingChoice,
+    #[description = "The cut the faction gets from the contract (defaults based on pricing type)"]
+    faction_cut: Option<u64>,
     #[description = "Optional contract start time in UTC as YYYY-MM-DD HH:MM"] start_time: Option<String>,
 ) -> Result<(), Error> {
     if !ensure_admin(&ctx).await? {
         return Ok(());
     }
 
-    let faction_cut = faction_cut.unwrap_or(10);
+    let pricing_type: PricingType = pricing_type.into();
+    let faction_cut = faction_cut.unwrap_or_else(|| pricing_type.default_faction_cut() as u64);
 
     let started_at = match start_time {
         Some(start_time) => match parse_contract_start_time(&start_time) {
@@ -132,6 +153,7 @@ pub async fn start(
         ended: 0,
         status,
         faction_cut: faction_cut as i64,
+        pricing_type,
         revives_synced: false,
     };
 
@@ -148,7 +170,9 @@ pub async fn start(
         .push(format!("<t:{}:f>", contract.started.clone()))
         .push(" and is ")
         .push(status_label)
-        .push(".")
+        .push(" (pricing: ")
+        .push(contract.pricing_type.label())
+        .push(").")
         .build();
 
     Database::insert(contract).await.unwrap();

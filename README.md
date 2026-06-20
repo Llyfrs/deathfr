@@ -11,7 +11,8 @@ Creates a new contract and immediately starts it. Takes the following arguments:
 - `contract_name` is used as an identifier in the list, so I recommend naming it something meaningful like served faction name + date.
 - `faction_id` is the faction you want to track revives for (if both defense and offensive revives are provided two different contracts need to be made).
 - `min_chance` is the minimum revive chance of success to count for payment.
-- `faction_cut` is the cut the faction gets from the contract (defaults to 10% if not set).
+- `pricing_type` selects the rate tier: `external` ($1M/$750k) or `inter_alliance` ($800k/$550k).
+- `faction_cut` is the cut the faction gets from the contract (defaults to 10% for external, 0% for inter_alliance).
 Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate a report if they want to.
 
 `/contract end`  

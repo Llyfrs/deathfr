@@ -24,7 +24,8 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
                  * `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \
                  * `faction_id` is the faction you want to track revives for (if **both defense and offensive revives** are provided two different contracts need to be made \n\
                  * `min_chance` is the minimum revive chance of success to count for payment \n\
-                 * `faction_cut` is the cut the faction gets from the contract (defaults to 10% if not set) \n\
+                 * `pricing_type` selects the rate tier: `external` ($1M/$750k) or `inter_alliance` ($800k/$550k) \n\
+                 * `faction_cut` is the cut the faction gets from the contract (defaults to 10% for external, 0% for inter_alliance) \n\
                 * `start_time` is optional and must use `YYYY-MM-DD HH:MM` in UTC. Future times create a pending contract. \n\
                  Returns contract ID that can be used for ending the contract, and is to be passed to the contracted faction so they can generate report if they want to."
                 .to_string(),

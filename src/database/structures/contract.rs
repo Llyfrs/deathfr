@@ -1,4 +1,5 @@
 use crate::database::structures::{CollectionName, DatabaseName};
+use crate::pricing::PricingType;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +26,8 @@ pub struct Contract {
     pub(crate) ended: u64,
     pub(crate) status: Status,
     pub(crate) faction_cut: i64,
+    #[serde(default)]
+    pub(crate) pricing_type: PricingType,
     #[serde(default)]
     pub(crate) revives_synced: bool,
 }

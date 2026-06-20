@@ -1,5 +1,6 @@
 mod bot;
 mod database;
+mod pricing;
 mod torn_api;
 
 use crate::bot::commands;
