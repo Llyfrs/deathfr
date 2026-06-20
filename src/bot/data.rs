@@ -9,6 +9,7 @@ use serenity::all::{CommandInteraction, Message, MessageId, UserId};
 use tokio::sync::Mutex;
 
 use crate::bot::commands::contract::ListMessageInfo;
+use crate::bot::commands::contract_wizard::ContractWizardState;
 use crate::torn_api::{ReviveMonitor, ReviveSourceConfig, TornAPI};
 
 /// Everything read from the secrets TOML file at startup.
@@ -214,6 +215,8 @@ pub struct Data {
     pub revive_cancellations: Mutex<HashMap<MessageId, CommandInteraction>>,
     /// Pagination state for /contract list messages
     pub contract_pages: Mutex<HashMap<MessageId, ListMessageInfo>>,
+    /// Interactive contract creation wizard state
+    pub contract_wizards: Mutex<HashMap<MessageId, ContractWizardState>>,
 }
 
 impl Data {
@@ -225,6 +228,7 @@ impl Data {
             revive_responses: Mutex::new(HashMap::new()),
             revive_cancellations: Mutex::new(HashMap::new()),
             contract_pages: Mutex::new(HashMap::new()),
+            contract_wizards: Mutex::new(HashMap::new()),
         }
     }
 }

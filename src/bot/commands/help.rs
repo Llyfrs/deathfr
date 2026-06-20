@@ -19,6 +19,13 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
 
     if level >= AccessLevel::Admin {
         fields.push((
+            "/start-contract-interactive".to_string(),
+            "**Experimental.** Step-by-step contract creation in a single ephemeral message using buttons and forms. \
+             Guides you through name, faction, min chance, pricing, optional faction cut and start time, with back/cancel/skip. \
+             Existing `/contract start` is unchanged.".to_string(),
+            false,
+        ));
+        fields.push((
             "/contract start".to_string(),
             "Creates a new contract and starts it immediately unless `start_time` is provided. Takes `contract_name`, `faction_id`, and `min_chance` as arguments. \n \
                  * `contract_name` is used as a identifier in list so I recommend naming it something meaningful like served faction name + date. \n \

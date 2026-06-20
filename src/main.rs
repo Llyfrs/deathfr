@@ -83,6 +83,7 @@ async fn main() -> anyhow::Result<()> {
             commands: vec![
                 commands::reviveme::reviveme(),
                 commands::contract::contract(),
+                commands::contract_wizard::start_contract_interactive(),
                 commands::stats::stats(),
                 commands::report::report(),
                 commands::submitkey::submitkey(),
@@ -126,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let guild_commands = poise::builtins::create_application_commands(&[
                     commands::contract::contract(),
+                    commands::contract_wizard::start_contract_interactive(),
                     commands::stats::stats(),
                     commands::submitkey::submitkey(),
                 ]);
