@@ -11,7 +11,7 @@ use rand::Rng;
 use serenity::all::{
     ActionRowComponent, ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton,
     CreateEmbed, CreateInputText, CreateInteractionResponse, CreateInteractionResponseFollowup,
-    CreateInteractionResponseMessage, CreateModal, EditMessage, InputTextStyle,
+    CreateInteractionResponseMessage, CreateModal, InputTextStyle,
     ModalInteraction, UserId,
 };
 use serenity::builder::CreateActionRow as CreateActionRowBuilder;
@@ -399,9 +399,6 @@ pub async fn handle_modal(
                 return finish_modal(ctx, data, modal, message_id, next_state).await;
             };
 
-            // Ack immediately — Torn API can take seconds and Discord requires a fast response.
-            modal.defer(&ctx.http).await?;
-
             let faction_data = data
                 .torn_api
                 .lock()
@@ -424,8 +421,6 @@ pub async fn handle_modal(
                     .map(str::to_string);
                 next_state.step = WizardStep::MinChance;
             }
-
-            return finish_modal_deferred(ctx, data, modal, message_id, next_state).await;
         }
         WizardStep::MinChance => {
             let Ok(min_chance) = raw.trim().parse::<u64>() else {
@@ -489,31 +484,6 @@ async fn finish_modal(
     respond_update_modal(ctx, modal, &next_state).await
 }
 
-async fn finish_modal_deferred(
-    ctx: &serenity::all::Context,
-    data: &Data,
-    modal: &ModalInteraction,
-    message_id: serenity::all::MessageId,
-    next_state: ContractWizardState,
-) -> Result<(), Error> {
-    {
-        let mut wizards = data.contract_wizards.lock().await;
-        if let Some(state) = wizards.get_mut(&message_id) {
-            *state = next_state.clone();
-        }
-    }
-    let Some(message) = modal.message.as_ref() else {
-        return Ok(());
-    };
-    edit_wizard_message(
-        ctx,
-        message.channel_id,
-        message.id,
-        &next_state,
-    )
-    .await
-}
-
 async fn confirm_and_create(
     ctx: &serenity::all::Context,
     data: &Data,
@@ -536,9 +506,28 @@ async fn confirm_and_create(
     };
 
     let faction_id = state.faction_id.unwrap_or(0);
+    let faction_data = data
+        .torn_api
+        .lock()
+        .await
+        .get_faction_data(faction_id)
+        .await
+        .unwrap();
 
-    // Ack immediately before DB work so the button stops "loading".
-    component.defer(&ctx.http).await?;
+    if faction_data.get("error").is_some() {
+        let mut errored = state.clone();
+        errored.error = Some(
+            "Invalid faction ID — check the number and try again.".to_string(),
+        );
+        errored.step = WizardStep::FactionId;
+        {
+            let mut wizards = data.contract_wizards.lock().await;
+            if let Some(s) = wizards.get_mut(&component.message.id) {
+                *s = errored.clone();
+            }
+        }
+        return respond_update(ctx, component, &errored).await;
+    }
 
     let contract = Contract {
         id: None,
@@ -579,12 +568,13 @@ async fn confirm_and_create(
     data.contract_wizards.lock().await.remove(&component.message.id);
 
     component
-        .message
-        .channel_id
-        .edit_message(
+        .create_response(
             &ctx.http,
-            component.message.id,
-            EditMessage::new().content(message).components(vec![]),
+            CreateInteractionResponse::UpdateMessage(
+                CreateInteractionResponseMessage::new()
+                    .content(message)
+                    .components(vec![]),
+            ),
         )
         .await?;
 
@@ -688,31 +678,12 @@ fn extract_modal_input(modal: &ModalInteraction) -> Option<String> {
     None
 }
 
-async fn edit_wizard_message(
-    ctx: &serenity::all::Context,
-    channel_id: serenity::all::ChannelId,
-    message_id: serenity::all::MessageId,
-    state: &ContractWizardState,
-) -> Result<(), Error> {
-    let (content, embed, components) = render_step(state);
-    channel_id
-        .edit_message(
-            &ctx.http,
-            message_id,
-            EditMessage::new()
-                .content(content)
-                .embed(embed)
-                .components(components),
-        )
-        .await?;
-    Ok(())
-}
-
 async fn respond_update(
     ctx: &serenity::all::Context,
     component: &ComponentInteraction,
     state: &ContractWizardState,
 ) -> Result<(), Error> {
+    let error = state.error.clone();
     let (content, embed, components) = render_step(state);
     component
         .create_response(
@@ -725,6 +696,9 @@ async fn respond_update(
             ),
         )
         .await?;
+    if let Some(error) = error {
+        send_error_followup_component(ctx, component, &error).await?;
+    }
     Ok(())
 }
 
@@ -733,6 +707,7 @@ async fn respond_update_modal(
     modal: &ModalInteraction,
     state: &ContractWizardState,
 ) -> Result<(), Error> {
+    let error = state.error.clone();
     let (content, embed, components) = render_step(state);
     modal
         .create_response(
@@ -743,6 +718,45 @@ async fn respond_update_modal(
                     .embed(embed)
                     .components(components),
             ),
+        )
+        .await?;
+    if let Some(error) = error {
+        send_error_followup_modal(ctx, modal, &error).await?;
+    }
+    Ok(())
+}
+
+fn error_followup_content(error: &str) -> String {
+    format!("**Contract wizard error**\n{error}")
+}
+
+async fn send_error_followup_modal(
+    ctx: &serenity::all::Context,
+    modal: &ModalInteraction,
+    error: &str,
+) -> Result<(), Error> {
+    modal
+        .create_followup(
+            &ctx.http,
+            CreateInteractionResponseFollowup::new()
+                .content(error_followup_content(error))
+                .ephemeral(true),
+        )
+        .await?;
+    Ok(())
+}
+
+async fn send_error_followup_component(
+    ctx: &serenity::all::Context,
+    component: &ComponentInteraction,
+    error: &str,
+) -> Result<(), Error> {
+    component
+        .create_followup(
+            &ctx.http,
+            CreateInteractionResponseFollowup::new()
+                .content(error_followup_content(error))
+                .ephemeral(true),
         )
         .await?;
     Ok(())
