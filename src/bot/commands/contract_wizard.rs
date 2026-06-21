@@ -399,13 +399,26 @@ pub async fn handle_modal(
                 return finish_modal(ctx, data, modal, message_id, next_state).await;
             };
 
-            let faction_data = data
+            let faction_data = match data
                 .torn_api
                 .lock()
                 .await
                 .get_faction_data(faction_id)
                 .await
-                .unwrap();
+            {
+                Ok(data) => data,
+                Err(e) => {
+                    let message = format!("Failed to fetch faction data from Torn: {e:#}");
+                    log::info!("{message}");
+                    next_state.faction_id = None;
+                    next_state.faction_name = None;
+                    next_state.error = Some(
+                        "Failed to fetch faction data from Torn — please try again later."
+                            .to_string(),
+                    );
+                    return finish_modal(ctx, data, modal, message_id, next_state).await;
+                }
+            };
 
             if faction_data.get("error").is_some() {
                 next_state.faction_id = None;
@@ -506,13 +519,31 @@ async fn confirm_and_create(
     };
 
     let faction_id = state.faction_id.unwrap_or(0);
-    let faction_data = data
+    let faction_data = match data
         .torn_api
         .lock()
         .await
         .get_faction_data(faction_id)
         .await
-        .unwrap();
+    {
+        Ok(data) => data,
+        Err(e) => {
+            let message = format!("Failed to fetch faction data from Torn: {e:#}");
+            log::info!("{message}");
+            let mut errored = state.clone();
+            errored.error = Some(
+                "Failed to fetch faction data from Torn — please try again later.".to_string(),
+            );
+            {
+                let mut wizards = data.contract_wizards.lock().await;
+                if let Some(wizard) = wizards.get_mut(&component.message.id) {
+                    *wizard = errored.clone();
+                }
+            }
+            respond_update(ctx, component, &errored).await?;
+            return Ok(());
+        }
+    };
 
     if faction_data.get("error").is_some() {
         let mut errored = state.clone();

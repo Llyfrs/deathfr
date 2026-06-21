@@ -117,14 +117,27 @@ pub async fn start(
         Status::Active
     };
 
-    let faction_data = ctx
+    let faction_data = match ctx
         .data()
         .torn_api
         .lock()
         .await
         .get_faction_data(faction_id)
         .await
-        .unwrap();
+    {
+        Ok(data) => data,
+        Err(e) => {
+            let message = format!("Failed to fetch faction data from Torn. Please try again later. ({e:#})");
+            log::info!("{message}");
+            ctx.send(
+                CreateReply::default()
+                    .content("Failed to fetch faction data from Torn. Please try again later.")
+                    .ephemeral(true),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
 
     if let Some(error) = faction_data.get("error") {
         log::info!("Error: {:?}", error);

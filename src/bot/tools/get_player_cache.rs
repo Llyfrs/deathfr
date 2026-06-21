@@ -11,12 +11,14 @@ pub async fn get_player_cache(user_id: u64, api: &mut TornAPI) -> Option<PlayerC
             .unwrap();
 
     if db_result.is_empty() {
-        let player = api.get_player_data(user_id).await.unwrap();
-        if player.get("error").is_some() {
-            log::error!("Error: {:?}", player.get("error").unwrap());
-            return None;
-        }
-        let name = player["name"].as_str().unwrap().to_string();
+        let player = match api.get_player_data(user_id).await {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!("Failed to fetch player data for {user_id}: {e:#}");
+                return None;
+            }
+        };
+        let name = player["name"].as_str()?.to_string();
         let player_cache = PlayerCache {
             user_id,
             name,

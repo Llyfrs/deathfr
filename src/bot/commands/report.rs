@@ -121,21 +121,51 @@ pub async fn report(
 
     let api = ctx.data().torn_api.clone();
 
-    let faction_data_target = api
+    let faction_data_target = match api
         .lock()
         .await
         .get_faction_data(contract.faction_id)
         .await
-        .unwrap();
+    {
+        Ok(data) => data,
+        Err(e) => {
+            let message = format!("Failed to fetch faction data from Torn: {e:#}");
+            if let Some(status) = syncing_status {
+                status.delete(ctx).await?;
+            }
+            ctx.send(
+                CreateReply::default()
+                    .content(message)
+                    .ephemeral(true),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
 
     let mut faction_names: HashMap<u64, String> = HashMap::new();
     let mut reviver_faction_labels = Vec::new();
     for id in &reviving_faction_ids {
-        let faction_data = api.lock().await.get_faction_data(*id).await.unwrap();
+        let faction_data = match api.lock().await.get_faction_data(*id).await {
+            Ok(data) => data,
+            Err(e) => {
+                let message = format!("Failed to fetch faction data from Torn: {e:#}");
+                if let Some(status) = syncing_status {
+                    status.delete(ctx).await?;
+                }
+                ctx.send(
+                    CreateReply::default()
+                        .content(message)
+                        .ephemeral(true),
+                )
+                .await?;
+                return Ok(());
+            }
+        };
         let label = format!(
             "{} ({})",
-            faction_data["name"].as_str().unwrap(),
-            faction_data["ID"].as_u64().unwrap()
+            faction_data["name"].as_str().unwrap_or("Unknown"),
+            faction_data["ID"].as_u64().unwrap_or(*id)
         );
         faction_names.insert(*id, label.clone());
         reviver_faction_labels.push(label);
@@ -172,8 +202,8 @@ pub async fn report(
             "Target Faction",
             format!(
                 "{} ({})",
-                faction_data_target["name"].as_str().unwrap(),
-                faction_data_target["ID"].as_u64().unwrap()
+                faction_data_target["name"].as_str().unwrap_or("Unknown"),
+                faction_data_target["ID"].as_u64().unwrap_or(contract.faction_id)
             ),
             true,
         )

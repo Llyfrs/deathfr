@@ -1,10 +1,7 @@
 use crate::database::structures::{ReviveEntry, TargetLastAction};
-use log::{error};
-use reqwest;
-use serde_json;
+use log::{error, warn};
 use serde_json::Value;
 use std::cmp::max;
-use std::error::Error;
 use tokio::time::{sleep, Duration};
 
 #[derive(Clone)]
@@ -23,6 +20,12 @@ pub struct TornAPI {
     name: String,
 }
 
+enum TornApiErrorAction {
+    RemoveKey,
+    Retry(u64),
+    Fatal,
+}
+
 impl TornAPI {
     pub fn new(keys: Vec<APIKey>) -> TornAPI {
         TornAPI {
@@ -39,44 +42,96 @@ impl TornAPI {
         self.keys.push(key.clone());
         self.keys_limits.push(key);
     }
+
     pub fn set_name(&mut self, name: String) {
         self.name = name;
     }
 
+    fn classify_error_code(code: u64) -> TornApiErrorAction {
+        match code {
+            // Key-specific errors — remove and retry with another key
+            1 | 2 | 10 | 13 | 16 | 18 => TornApiErrorAction::RemoveKey,
+            // Transient errors — wait and retry
+            5 => TornApiErrorAction::Retry(60),
+            8 | 9 => TornApiErrorAction::Retry(30),
+            15 | 17 => TornApiErrorAction::Retry(5),
+            // Request-level or unknown errors — do not retry or remove keys
+            _ => TornApiErrorAction::Fatal,
+        }
+    }
+
+    fn remove_key(&mut self, key_value: &str, owner: &str, code: u64) {
+        warn!(
+            "Removing invalid API key for owner {} (Torn API error code {})",
+            owner, code
+        );
+        error!(
+            "error invalid key of owner: {} (code {})",
+            owner, code
+        );
+
+        self.keys.retain(|k| k.key != key_value);
+        self.keys_limits.retain(|k| k.key != key_value);
+
+        if !self.keys.is_empty() {
+            self.key_used %= self.keys.len();
+        } else {
+            self.key_used = 0;
+        }
+    }
+
     ///
-    /// Makes a request to the Torn API, using given url. It handles errors by waiting in case of rate limit exceeded, it alerts about invalid keys and panics in all other cases.
+    /// Makes a request to the Torn API using the given base URL (without key).
+    /// Handles rate limits by waiting, removes invalid keys and retries with another,
+    /// and returns an error for unrecoverable API failures.
     ///
-    pub async fn make_request(&mut self, url: &str) -> Result<Value, Box<dyn Error>> {
+    pub async fn make_request(&mut self, base_url: &str) -> Result<Value, String> {
         loop {
-            let url = format!("{}&comment={}", url, self.name);
+            let key = self.get_key().await?;
+            let url = format!(
+                "{}&key={}&comment={}",
+                base_url, key.key, self.name
+            );
 
-            let result = reqwest::get(url).await?.text().await?;
-            let json: Value = serde_json::from_str(&result)?;
+            let result = reqwest::get(&url)
+                .await
+                .map_err(|e| e.to_string())?
+                .text()
+                .await
+                .map_err(|e| e.to_string())?;
+            let json: Value =
+                serde_json::from_str(&result).map_err(|e| e.to_string())?;
 
-            if json["error"].is_object() {
-                if json["error"]["code"].as_u64().unwrap() == 5 {
-                    sleep(Duration::from_secs(60)).await;
-                    continue;
+            if let Some(error_obj) = json.get("error").and_then(|e| e.as_object()) {
+                let code = error_obj
+                    .get("code")
+                    .and_then(|c| c.as_u64())
+                    .unwrap_or(0);
+                let message = error_obj
+                    .get("error")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("unknown error");
+
+                match Self::classify_error_code(code) {
+                    TornApiErrorAction::RemoveKey => {
+                        self.remove_key(&key.key, &key.owner, code);
+                        continue;
+                    }
+                    TornApiErrorAction::Retry(secs) => {
+                        warn!(
+                            "Torn API error code {} ({}), retrying in {}s",
+                            code, message, secs
+                        );
+                        sleep(Duration::from_secs(secs)).await;
+                        continue;
+                    }
+                    TornApiErrorAction::Fatal => {
+                        return Err(format!(
+                            "Torn API error code {}: {}",
+                            code, message
+                        ));
+                    }
                 }
-
-                if json["error"]["code"].as_u64().unwrap() == 2 {
-                    println!(
-                        "error invalid key of owner: {}",
-                        self.keys[(self.key_used - 1) % self.keys.len()].owner
-                    );
-                    error!(
-                        "error invalid key of owner: {}",
-                        self.keys[(self.key_used - 1) % self.keys.len()].owner
-                    );
-
-                    let index = (self.key_used - 1) % self.keys.len();
-                    self.keys.remove(index);
-                    self.keys_limits.remove(index);
-                }
-            }
-
-            if self.keys_limits.len() == 0 {
-                panic!("No valid keys left");
             }
 
             return Ok(json);
@@ -88,17 +143,16 @@ impl TornAPI {
     accessing keys using this function makes sure their limits are not exceeded,
     and when they run out of calls, it waits for the reset.
      */
-    /**
-    Gets the next key to use,
-    accessing keys using this function makes sure their limits are not exceeded,
-    and when they run out of calls, it waits for the reset.
-     */
-    async fn get_key(&mut self) -> Result<APIKey, Box<dyn Error>> {
+    async fn get_key(&mut self) -> Result<APIKey, String> {
+        if self.keys.is_empty() {
+            return Err("no valid API keys left".to_string());
+        }
+
         let mut key_to_use = self.key_used % self.keys.len();
-        let start_key = key_to_use % self.keys.len();
+        let start_key = key_to_use;
 
         // If the key to be used is already out of calls we move to the next one,until we find one that can be used.
-        while self.keys_limits[key_to_use].rate_limit <= 0 {
+        while self.keys_limits[key_to_use].rate_limit == 0 {
             self.key_used += 1;
             key_to_use = self.key_used % self.keys.len();
 
@@ -107,7 +161,8 @@ impl TornAPI {
                 sleep(Duration::from_secs(max(
                     60 - (chrono::Utc::now().timestamp() - self.last_reset),
                     0,
-                ) as u64)).await;
+                ) as u64))
+                .await;
 
                 if chrono::Utc::now().timestamp() - self.last_reset >= 60 {
                     self.last_reset = chrono::Utc::now().timestamp();
@@ -123,23 +178,19 @@ impl TornAPI {
         Ok(self.keys_limits[key_to_use].clone())
     }
 
-    pub async fn get_player_data(&mut self, player_id: u64) -> Result<Value, Box<dyn Error>> {
-        let key = self.get_key().await?;
-
+    pub async fn get_player_data(&mut self, player_id: u64) -> Result<Value, String> {
         let url = format!(
-            "https://api.torn.com/user/{}?selections=profile&key={}",
-            player_id, key.key
+            "https://api.torn.com/user/{}?selections=profile",
+            player_id
         );
 
         self.make_request(&url).await
     }
 
-    pub async fn get_faction_data(&mut self, faction_id: u64) -> Result<Value, Box<dyn Error>> {
-        let key = self.get_key().await?;
-
+    pub async fn get_faction_data(&mut self, faction_id: u64) -> Result<Value, String> {
         let url = format!(
-            "https://api.torn.com/faction/{}?selections=basic&key={}",
-            faction_id, key.key
+            "https://api.torn.com/faction/{}?selections=basic",
+            faction_id
         );
 
         self.make_request(&url).await
@@ -148,17 +199,14 @@ impl TornAPI {
     pub async fn get_revives(&mut self, from: u64) -> Option<(Vec<ReviveEntry>, u64)> {
         let mut revives = Vec::new();
 
-        let key = self.get_key().await.ok()?;
-
         let url = format!(
-            "https://api.torn.com/faction/?selections=revivesfull,basic&from={}&key={}",
-            from, key.key
+            "https://api.torn.com/faction/?selections=revivesfull,basic&from={}",
+            from
         );
 
         let json = self.make_request(&url).await.ok()?;
         let revives_json = json["revives"].as_object()?;
-
-        let faction_id = json["ID"].as_u64().unwrap();
+        let faction_id = json["ID"].as_u64()?;
 
         for (id, data) in revives_json {
             revives.push(ReviveEntry {

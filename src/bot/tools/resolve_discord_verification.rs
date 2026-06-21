@@ -22,7 +22,13 @@ pub async fn resolve_discord_verification(discord_id: u64, api: Arc<Mutex<TornAP
     match result {
         None => {
 
-            let player = api.lock().await.get_player_data(discord_id).await.unwrap();
+            let player = match api.lock().await.get_player_data(discord_id).await {
+                Ok(data) => data,
+                Err(e) => {
+                    log::info!("Failed to fetch player data for {discord_id}: {e:#}");
+                    return None;
+                }
+            };
 
             if let Some(error) = player.get("error") {
                 log::info!("Error: {:?}", error);
