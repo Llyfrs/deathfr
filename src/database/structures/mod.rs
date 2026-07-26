@@ -11,7 +11,6 @@ pub use contract::Contract;
 pub use contract::Status;
 pub use player_cache::PlayerCache;
 pub use revive::ReviveEntry;
-pub use revive::TargetLastAction;
 pub use verification::Verification;
 
 pub use colection_name::CollectionName;

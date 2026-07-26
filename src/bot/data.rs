@@ -207,7 +207,7 @@ fn parse_bool(field: &'static str, s: &str) -> anyhow::Result<bool> {
 /// Shared state passed to every poise command and event handler via the framework context.
 pub struct Data {
     pub secrets: Secrets,
-    pub torn_api: Arc<Mutex<TornAPI>>,
+    pub torn_api: Arc<TornAPI>,
     pub revive_monitor: Arc<ReviveMonitor>,
     /// Map of messages sent to the reviver channel, keyed by the user that asked for a revive
     pub revive_responses: Mutex<HashMap<UserId, Message>>,
@@ -223,7 +223,7 @@ impl Data {
     pub fn new(secrets: Secrets, torn_api: TornAPI, revive_monitor: Arc<ReviveMonitor>) -> Self {
         Self {
             secrets,
-            torn_api: Arc::new(Mutex::new(torn_api)),
+            torn_api: Arc::new(torn_api),
             revive_monitor,
             revive_responses: Mutex::new(HashMap::new()),
             revive_cancellations: Mutex::new(HashMap::new()),

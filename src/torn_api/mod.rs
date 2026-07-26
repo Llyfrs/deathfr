@@ -1,5 +1,5 @@
 mod revive_monitor;
-pub(crate) mod torn_api;
+pub(crate) mod client;
 
+pub use client::{APIKey, TornAPI};
 pub use revive_monitor::{ReviveMonitor, ReviveSourceConfig};
-pub use torn_api::TornAPI;

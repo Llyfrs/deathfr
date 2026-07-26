@@ -1,16 +1,16 @@
 use crate::bot::data::{Context, Data, Error};
 use crate::database::structures::APIKey as DbAPIKey;
 use crate::database::Database;
-use crate::torn_api::torn_api::APIKey as TornApiKey;
+use crate::torn_api::APIKey as TornApiKey;
 use mongodb::bson::oid::ObjectId;
 use poise::CreateReply;
-use serde_json::Value;
 use serenity::all::{
     ActionRowComponent, ButtonStyle, ComponentInteraction, CreateButton, CreateEmbed,
     CreateInteractionResponse, CreateInteractionResponseMessage, CreateModal, InputTextStyle,
     ModalInteraction,
 };
 use serenity::builder::{CreateActionRow, CreateInputText};
+use torn_api::executor::{ExecutorExt, ReqwestClient};
 
 /// Submit a Torn API key to Deathfr
 #[poise::command(slash_command)]
@@ -116,14 +116,17 @@ pub async fn handle_modal_submit(
         return Ok(());
     };
 
-    let Some(owner_name) = resolve_owner_name(&api_key).await else {
-        respond_ephemeral(
-            ctx,
-            modal,
-            "Invalid Torn API key. Please make sure you pasted a working key.",
-        )
-        .await;
-        return Ok(());
+    let owner_name = match resolve_owner_name(&api_key).await {
+        Some(name) => name,
+        None => {
+            respond_ephemeral(
+                ctx,
+                modal,
+                "Invalid Torn API key. Please make sure you pasted a working key.",
+            )
+            .await;
+            return Ok(());
+        }
     };
 
     let api_key_doc = DbAPIKey {
@@ -145,14 +148,13 @@ pub async fn handle_modal_submit(
     }
 
     // Add the key to the in-memory TornAPI rotation
-    {
-        let mut api = data.torn_api.lock().await;
-        api.add_key(TornApiKey {
+    data.torn_api
+        .add_key(TornApiKey {
             key: api_key.clone(),
             rate_limit: 10,
             owner: owner_name.clone(),
-        });
-    }
+        })
+        .await;
 
     respond_ephemeral(
         ctx,
@@ -178,17 +180,16 @@ async fn respond_ephemeral(ctx: &serenity::all::Context, modal: &ModalInteractio
 }
 
 /// Try to resolve the owner name of a Torn API key by calling Torn API with that key.
+///
+/// Returns `None` if the key is invalid or the request otherwise fails.
 async fn resolve_owner_name(key: &str) -> Option<String> {
-    let url = format!("https://api.torn.com/user/?selections=profile&key={}", key);
-    let resp = reqwest::get(url).await.ok()?;
-    let text = resp.text().await.ok()?;
-    let json: Value = serde_json::from_str(&text).ok()?;
-
-    if json.get("error").is_some() {
-        return None;
+    let client = ReqwestClient::new(key);
+    match client.user().profile(|b| b).await {
+        Ok(resp) => Some(resp.profile.name),
+        Err(torn_api::Error::Api(_)) => None,
+        Err(e) => {
+            log::warn!("Failed to validate submitted API key: {e:#}");
+            None
+        }
     }
-
-    json.get("name")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
 }

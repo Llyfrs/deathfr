@@ -32,11 +32,11 @@ async fn main() -> anyhow::Result<()> {
 
     let api_keys = Database::get_collection::<APIKey>().await.unwrap();
 
-    let mut api_keys: Vec<torn_api::torn_api::APIKey> = api_keys
+    let mut api_keys: Vec<torn_api::APIKey> = api_keys
         .into_iter()
         .filter_map(|key| {
             if key.valid {
-                Some(torn_api::torn_api::APIKey {
+                Some(torn_api::APIKey {
                     key: key.api_key,
                     rate_limit: 10,
                     owner: key.name,
@@ -51,16 +51,14 @@ async fn main() -> anyhow::Result<()> {
 
     // let's waste only my API call for testing
     if secret.dev {
-        api_keys = vec![torn_api::torn_api::APIKey {
+        api_keys = vec![torn_api::APIKey {
             key: secret.test_api_key.clone(),
             rate_limit: 100,
             owner: "Test Key (Llyfr)".to_string(),
         }];
     }
 
-    let mut api = TornAPI::new(api_keys);
-
-    api.set_name("Deathfr".to_string());
+    let api = TornAPI::new(api_keys);
 
     if secret.dev {
         log::info!("Running in dev mode");
