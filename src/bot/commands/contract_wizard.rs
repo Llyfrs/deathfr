@@ -16,6 +16,8 @@ use serenity::all::{
 };
 use serenity::builder::CreateActionRow as CreateActionRowBuilder;
 use serenity::utils::MessageBuilder;
+use torn_api::models::FactionId;
+use torn_api::{ApiError, Error as TornError};
 
 const MODAL_ID: &str = "contract_wizard_modal";
 const INPUT_ID: &str = "contract_wizard_input";
@@ -399,14 +401,23 @@ pub async fn handle_modal(
                 return finish_modal(ctx, data, modal, message_id, next_state).await;
             };
 
-            let faction_data = match data
+            match data
                 .torn_api
-                .lock()
-                .await
-                .get_faction_data(faction_id)
+                .get_faction_basic(FactionId::new(faction_id as i32))
                 .await
             {
-                Ok(data) => data,
+                Ok(faction_data) => {
+                    next_state.faction_id = Some(faction_id);
+                    next_state.faction_name = Some(faction_data.basic.name);
+                    next_state.step = WizardStep::MinChance;
+                }
+                Err(TornError::Api(ApiError::IncorrectId | ApiError::IncorrectIdEntityRelation)) => {
+                    next_state.faction_id = None;
+                    next_state.faction_name = None;
+                    next_state.error = Some(
+                        "Invalid faction ID — check the number and try again.".to_string(),
+                    );
+                }
                 Err(e) => {
                     let message = format!("Failed to fetch faction data from Torn: {e:#}");
                     log::info!("{message}");
@@ -418,21 +429,6 @@ pub async fn handle_modal(
                     );
                     return finish_modal(ctx, data, modal, message_id, next_state).await;
                 }
-            };
-
-            if faction_data.get("error").is_some() {
-                next_state.faction_id = None;
-                next_state.faction_name = None;
-                next_state.error = Some(
-                    "Invalid faction ID — check the number and try again.".to_string(),
-                );
-            } else {
-                next_state.faction_id = Some(faction_id);
-                next_state.faction_name = faction_data
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                next_state.step = WizardStep::MinChance;
             }
         }
         WizardStep::MinChance => {
@@ -519,14 +515,26 @@ async fn confirm_and_create(
     };
 
     let faction_id = state.faction_id.unwrap_or(0);
-    let faction_data = match data
+    match data
         .torn_api
-        .lock()
-        .await
-        .get_faction_data(faction_id)
+        .get_faction_basic(FactionId::new(faction_id as i32))
         .await
     {
-        Ok(data) => data,
+        Ok(_) => {}
+        Err(TornError::Api(ApiError::IncorrectId | ApiError::IncorrectIdEntityRelation)) => {
+            let mut errored = state.clone();
+            errored.error = Some(
+                "Invalid faction ID — check the number and try again.".to_string(),
+            );
+            errored.step = WizardStep::FactionId;
+            {
+                let mut wizards = data.contract_wizards.lock().await;
+                if let Some(s) = wizards.get_mut(&component.message.id) {
+                    *s = errored.clone();
+                }
+            }
+            return respond_update(ctx, component, &errored).await;
+        }
         Err(e) => {
             let message = format!("Failed to fetch faction data from Torn: {e:#}");
             log::info!("{message}");
@@ -543,21 +551,6 @@ async fn confirm_and_create(
             respond_update(ctx, component, &errored).await?;
             return Ok(());
         }
-    };
-
-    if faction_data.get("error").is_some() {
-        let mut errored = state.clone();
-        errored.error = Some(
-            "Invalid faction ID — check the number and try again.".to_string(),
-        );
-        errored.step = WizardStep::FactionId;
-        {
-            let mut wizards = data.contract_wizards.lock().await;
-            if let Some(s) = wizards.get_mut(&component.message.id) {
-                *s = errored.clone();
-            }
-        }
-        return respond_update(ctx, component, &errored).await;
     }
 
     let contract = Contract {

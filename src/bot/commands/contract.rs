@@ -15,6 +15,8 @@ use serenity::all::{
     UserId,
 };
 use serenity::utils::MessageBuilder;
+use torn_api::models::FactionId;
+use torn_api::{ApiError, Error as TornError};
 
 pub(crate) const PAGE_SIZE: u64 = 10;
 
@@ -120,12 +122,20 @@ pub async fn start(
     let faction_data = match ctx
         .data()
         .torn_api
-        .lock()
-        .await
-        .get_faction_data(faction_id)
+        .get_faction_basic(FactionId::new(faction_id as i32))
         .await
     {
         Ok(data) => data,
+        Err(TornError::Api(ApiError::IncorrectId | ApiError::IncorrectIdEntityRelation)) => {
+            log::info!("Invalid faction ID: {faction_id}");
+            ctx.send(
+                CreateReply::default()
+                    .content("Invalid faction ID")
+                    .ephemeral(true),
+            )
+            .await?;
+            return Ok(());
+        }
         Err(e) => {
             let message = format!("Failed to fetch faction data from Torn. Please try again later. ({e:#})");
             log::info!("{message}");
@@ -138,17 +148,7 @@ pub async fn start(
             return Ok(());
         }
     };
-
-    if let Some(error) = faction_data.get("error") {
-        log::info!("Error: {:?}", error);
-        ctx.send(
-            CreateReply::default()
-                .content("Invalid faction ID")
-                .ephemeral(true),
-        )
-        .await?;
-        return Ok(());
-    }
+    let _ = &faction_data;
 
     log::info!(
         "Processing create subcommand with contract_name: {} and faction_id: {}",

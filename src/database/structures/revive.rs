@@ -1,6 +1,28 @@
 use crate::database::structures::CollectionName;
 use crate::database::structures::DatabaseName;
 use serde::{Deserialize, Serialize};
+use torn_api::models::ReviveSimplified;
+
+impl From<ReviveSimplified> for ReviveEntry {
+    fn from(r: ReviveSimplified) -> Self {
+        ReviveEntry {
+            id: r.id.0.to_string(),
+            timestamp: r.timestamp as u64,
+            result: r.result,
+            chance: r.success_chance as f32,
+            reviver_id: r.reviver.id.0 as u64,
+            reviver_faction: r.reviver.faction_id.map(|f| f.0 as u64).unwrap_or(0),
+            target_id: r.target.id.0 as u64,
+            target_faction: r.target.faction_id.map(|f| f.0 as u64).unwrap_or(0),
+            target_hospital_reason: r.target.hospital_reason,
+            target_early_discharge: r.target.early_discharge,
+            target_last_action: TargetLastAction {
+                timestamp: r.target.last_action as u64,
+                status: r.target.online_status,
+            },
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ReviveEntry {

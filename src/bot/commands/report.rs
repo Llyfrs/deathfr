@@ -7,11 +7,10 @@ use crate::pricing::{classify_revive, ReviveClass, ReviveCounts};
 use crate::torn_api::TornAPI;
 use mongodb::bson::{doc, Bson};
 use poise::CreateReply;
-use serde_json::Value;
 use serenity::builder::{CreateEmbed, CreateMessage};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use torn_api::models::FactionId;
 
 /// Generate contract report
 #[poise::command(slash_command)]
@@ -128,9 +127,7 @@ pub async fn report(
     let api = ctx.data().torn_api.clone();
 
     let faction_data_target = match api
-        .lock()
-        .await
-        .get_faction_data(contract.faction_id)
+        .get_faction_basic(FactionId::new(contract.faction_id as i32))
         .await
     {
         Ok(data) => data,
@@ -196,7 +193,7 @@ pub async fn report(
         )
         .field(
             "Target Faction",
-            faction_label(&faction_data_target, contract.faction_id),
+            faction_label(&faction_data_target.basic.name, faction_data_target.basic.id.0 as u64),
             true,
         )
         .field("", "", false)
@@ -245,7 +242,7 @@ pub async fn report(
 
     for ((faction_id, player_id), entries) in &per_faction_player {
         // TODO: caching system for revive skill to avoid rate limits on large reports
-        let player_data = match get_player_cache(*player_id, &mut *api.lock().await).await {
+        let player_data = match get_player_cache(*player_id, &api).await {
             Some(player) => player,
             None => continue,
         };
@@ -346,7 +343,10 @@ async fn pending_report(
 ) -> Result<(), Error> {
     let api = ctx.data().torn_api.clone();
 
-    let faction_data_target = match api.lock().await.get_faction_data(contract.faction_id).await {
+    let faction_data_target = match api
+        .get_faction_basic(FactionId::new(contract.faction_id as i32))
+        .await
+    {
         Ok(data) => data,
         Err(e) => {
             ctx.send(
@@ -387,7 +387,7 @@ async fn pending_report(
         .field(reviver_field_name, reviver_faction_labels.join("\n"), true)
         .field(
             "Target Faction",
-            faction_label(&faction_data_target, contract.faction_id),
+            faction_label(&faction_data_target.basic.name, faction_data_target.basic.id.0 as u64),
             true,
         )
         .field("Contract ID", format!("`{}`", contract.contract_id), true)
@@ -407,15 +407,18 @@ async fn pending_report(
 
 /// Fetches the reviving factions' "Name (ID)" labels, both keyed by faction id and as a list.
 async fn fetch_reviver_factions(
-    api: &Arc<Mutex<TornAPI>>,
+    api: &Arc<TornAPI>,
     reviving_faction_ids: &[u64],
 ) -> Result<(HashMap<u64, String>, Vec<String>), String> {
     let mut faction_names = HashMap::new();
     let mut labels = Vec::new();
 
     for id in reviving_faction_ids {
-        let faction_data = api.lock().await.get_faction_data(*id).await?;
-        let label = faction_label(&faction_data, *id);
+        let faction_data = api
+            .get_faction_basic(FactionId::new(*id as i32))
+            .await
+            .map_err(|e| format!("{e:#}"))?;
+        let label = faction_label(&faction_data.basic.name, faction_data.basic.id.0 as u64);
         faction_names.insert(*id, label.clone());
         labels.push(label);
     }
@@ -424,12 +427,8 @@ async fn fetch_reviver_factions(
 }
 
 /// Formats Torn faction data as "Name (ID)".
-fn faction_label(faction_data: &Value, fallback_id: u64) -> String {
-    format!(
-        "{} ({})",
-        faction_data["name"].as_str().unwrap_or("Unknown"),
-        faction_data["ID"].as_u64().unwrap_or(fallback_id)
-    )
+fn faction_label(name: &str, id: u64) -> String {
+    format!("{name} ({id})")
 }
 
 fn format_with_commas(number: u64) -> String {

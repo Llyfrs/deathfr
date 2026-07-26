@@ -1,9 +1,7 @@
 use crate::database::Database;
-use crate::torn_api::torn_api::APIKey;
 use crate::torn_api::TornAPI;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub struct ReviveSourceConfig {
@@ -12,7 +10,7 @@ pub struct ReviveSourceConfig {
 }
 
 struct ReviveSource {
-    api: Mutex<TornAPI>,
+    api: Arc<TornAPI>,
     faction_ids: Vec<u64>,
 }
 
@@ -28,7 +26,7 @@ pub struct SyncResult {
 
 pub struct ReviveMonitor {
     sources: Vec<ReviveSource>,
-    sync_lock: Mutex<()>,
+    sync_lock: tokio::sync::Mutex<()>,
 }
 
 impl ReviveMonitor {
@@ -36,14 +34,13 @@ impl ReviveMonitor {
         let sources = configs
             .into_iter()
             .map(|config| {
-                let mut api = TornAPI::new(vec![APIKey {
+                let api = TornAPI::new(vec![crate::torn_api::APIKey {
                     key: config.api_key,
                     rate_limit: 2,
                     owner: "Revive Monitor Key".to_string(),
                 }]);
-                api.set_name("Revive Monitor (Deathfr)".to_string());
                 ReviveSource {
-                    api: Mutex::new(api),
+                    api: Arc::new(api),
                     faction_ids: config.faction_ids,
                 }
             })
@@ -51,7 +48,7 @@ impl ReviveMonitor {
 
         Self {
             sources,
-            sync_lock: Mutex::new(()),
+            sync_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -77,49 +74,40 @@ impl ReviveMonitor {
             .copied()
             .ok_or_else(|| anyhow::anyhow!("Revive source has no faction IDs configured"))?;
 
-        let mut last_revive = Self::get_last_revive(primary_faction).await;
-        let mut api = source.api.lock().await;
-        let revives = api.get_revives(last_revive).await;
+        let last_revive = Self::get_last_revive(primary_faction).await;
 
-        match revives {
-            None => {
-                log::error!("Failed to collect revives");
-                Ok(SourceSyncResult {
+        let response = match source.api.get_revives_full(last_revive).await {
+            Ok(resp) => resp,
+            Err(e) => {
+                log::error!("Failed to collect revives for faction {primary_faction}: {e:#}");
+                return Ok(SourceSyncResult {
                     inserted: 0,
                     has_backlog: false,
-                })
+                });
             }
-            Some((revives, id)) => {
-                if !source.faction_ids.contains(&id) {
-                    log::error!(
-                        "Faction ID mismatch, expected one of {:?}, got {}",
-                        source.faction_ids,
-                        id
-                    );
-                    return Ok(SourceSyncResult {
-                        inserted: 0,
-                        has_backlog: false,
-                    });
-                }
+        };
 
-                let len = revives.len();
-                let has_backlog = len > 900;
+        let revives: Vec<crate::database::structures::ReviveEntry> =
+            response.revives.into_iter().map(Into::into).collect();
 
-                if len > 0 {
-                    Database::insert_manny(revives.clone()).await?;
-                    last_revive = revives.last().unwrap().timestamp;
-                    Self::set_last_revive(id, last_revive).await?;
-                    log::info!("Collected {len} revives for faction {id}, last revive: {last_revive}");
-                } else {
-                    log::info!("No new revives found for faction {id}.");
-                }
+        let len = revives.len();
+        let has_backlog = len > 900;
 
-                Ok(SourceSyncResult {
-                    inserted: len,
-                    has_backlog,
-                })
-            }
+        if len > 0 {
+            let last_timestamp = revives.last().unwrap().timestamp;
+            Database::insert_manny(revives).await?;
+            Self::set_last_revive(primary_faction, last_timestamp).await?;
+            log::info!(
+                "Collected {len} revives for faction {primary_faction}, last revive: {last_timestamp}"
+            );
+        } else {
+            log::info!("No new revives found for faction {primary_faction}.");
         }
+
+        Ok(SourceSyncResult {
+            inserted: len,
+            has_backlog,
+        })
     }
 
     pub async fn sync_once(&self) -> anyhow::Result<SyncResult> {
