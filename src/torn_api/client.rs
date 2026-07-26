@@ -61,16 +61,24 @@ fn classify_error_code(code: u16) -> ErrorAction {
 
 fn build_reqwest_client(api_key: &str) -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::with_capacity(1);
-    headers.insert(
-        reqwest::header::AUTHORIZATION,
-        reqwest::header::HeaderValue::from_str(&format!("ApiKey {api_key}"))
-            .expect("invalid api key header value"),
-    );
+
+    match reqwest::header::HeaderValue::from_str(&format!("ApiKey {api_key}")) {
+        Ok(value) => {
+            headers.insert(reqwest::header::AUTHORIZATION, value);
+        }
+        Err(e) => {
+            warn!("Invalid API key header value (will omit Authorization header): {e}");
+        }
+    }
+
     reqwest::Client::builder()
         .default_headers(headers)
         .brotli(true)
         .build()
-        .expect("failed to build reqwest client")
+        .unwrap_or_else(|e| {
+            warn!("Failed to build reqwest client: {e}");
+            reqwest::Client::new()
+        })
 }
 
 /// Result of trying to reserve a key for one request.
