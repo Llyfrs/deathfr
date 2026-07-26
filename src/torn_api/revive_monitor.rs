@@ -95,7 +95,7 @@ impl ReviveMonitor {
 
         if len > 0 {
             let last_timestamp = revives.last().unwrap().timestamp;
-            Database::insert_manny(revives.clone()).await?;
+            Database::insert_manny(revives).await?;
             Self::set_last_revive(primary_faction, last_timestamp).await?;
             log::info!(
                 "Collected {len} revives for faction {primary_faction}, last revive: {last_timestamp}"
