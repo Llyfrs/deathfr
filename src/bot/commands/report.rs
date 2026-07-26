@@ -4,10 +4,14 @@ use crate::bot::tools::get_player_cache::get_player_cache;
 use crate::database::structures::{Contract, ReviveEntry, Status};
 use crate::database::Database;
 use crate::pricing::{classify_revive, ReviveClass, ReviveCounts};
+use crate::torn_api::TornAPI;
 use mongodb::bson::{doc, Bson};
 use poise::CreateReply;
+use serde_json::Value;
 use serenity::builder::{CreateEmbed, CreateMessage};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Generate contract report
 #[poise::command(slash_command)]
@@ -36,18 +40,20 @@ pub async fn report(
         return Ok(());
     };
 
-    if contract.status != Status::Ended {
-        let msg = match contract.status {
-            Status::Pending => format!(
-                "Contract hasn't started yet — it starts <t:{}:f>.",
-                contract.started
-            ),
-            _ => "Contract is still active. Live reports will be implemented in the future hopefully."
-                .to_string(),
-        };
-        ctx.send(CreateReply::default().content(msg).ephemeral(true))
+    match contract.status {
+        Status::Pending => return pending_report(ctx, &contract, is_admin).await,
+        Status::Active => {
+            ctx.send(
+                CreateReply::default()
+                    .content(
+                        "Contract is still active. Live reports will be implemented in the future hopefully.",
+                    )
+                    .ephemeral(true),
+            )
             .await?;
-        return Ok(());
+            return Ok(());
+        }
+        Status::Ended => {}
     }
 
     let syncing_status = if !contract.revives_synced {
@@ -143,10 +149,8 @@ pub async fn report(
         }
     };
 
-    let mut faction_names: HashMap<u64, String> = HashMap::new();
-    let mut reviver_faction_labels = Vec::new();
-    for id in &reviving_faction_ids {
-        let faction_data = match api.lock().await.get_faction_data(*id).await {
+    let (faction_names, reviver_faction_labels) =
+        match fetch_reviver_factions(&api, &reviving_faction_ids).await {
             Ok(data) => data,
             Err(e) => {
                 let message = format!("Failed to fetch faction data from Torn: {e:#}");
@@ -162,14 +166,6 @@ pub async fn report(
                 return Ok(());
             }
         };
-        let label = format!(
-            "{} ({})",
-            faction_data["name"].as_str().unwrap_or("Unknown"),
-            faction_data["ID"].as_u64().unwrap_or(*id)
-        );
-        faction_names.insert(*id, label.clone());
-        reviver_faction_labels.push(label);
-    }
 
     let reviver_field_name = if reviving_faction_ids.len() == 1 {
         "Reviving Faction"
@@ -200,11 +196,7 @@ pub async fn report(
         )
         .field(
             "Target Faction",
-            format!(
-                "{} ({})",
-                faction_data_target["name"].as_str().unwrap_or("Unknown"),
-                faction_data_target["ID"].as_u64().unwrap_or(contract.faction_id)
-            ),
+            faction_label(&faction_data_target, contract.faction_id),
             true,
         )
         .field("", "", false)
@@ -343,6 +335,101 @@ pub async fn report(
     }
 
     Ok(())
+}
+
+/// Sends a setup overview for a pending contract so leadership can verify it.
+/// Contains no revive counts; the faction cut is only shown to admins.
+async fn pending_report(
+    ctx: Context<'_>,
+    contract: &Contract,
+    is_admin: bool,
+) -> Result<(), Error> {
+    let api = ctx.data().torn_api.clone();
+
+    let faction_data_target = match api.lock().await.get_faction_data(contract.faction_id).await {
+        Ok(data) => data,
+        Err(e) => {
+            ctx.send(
+                CreateReply::default()
+                    .content(format!("Failed to fetch faction data from Torn: {e:#}"))
+                    .ephemeral(true),
+            )
+            .await?;
+            return Ok(());
+        }
+    };
+
+    let reviving_faction_ids = ctx.data().secrets.reviving_faction_ids();
+
+    let (_, reviver_faction_labels) =
+        match fetch_reviver_factions(&api, &reviving_faction_ids).await {
+            Ok(data) => data,
+            Err(e) => {
+                ctx.send(
+                    CreateReply::default()
+                        .content(format!("Failed to fetch faction data from Torn: {e:#}"))
+                        .ephemeral(true),
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+
+    let reviver_field_name = if reviving_faction_ids.len() == 1 {
+        "Reviving Faction"
+    } else {
+        "Reviving Factions"
+    };
+
+    let mut embed = CreateEmbed::new()
+        .title(contract.contract_name.clone() + " Report")
+        .description(" ")
+        .field(reviver_field_name, reviver_faction_labels.join("\n"), true)
+        .field(
+            "Target Faction",
+            faction_label(&faction_data_target, contract.faction_id),
+            true,
+        )
+        .field("Contract ID", format!("`{}`", contract.contract_id), true)
+        .field("Status", "Pending", true)
+        .field("Starts", format!("<t:{}:f>", contract.started), true)
+        .field("Min Chance", format!("{}%", contract.min_chance), true)
+        .field("Pricing Type", contract.pricing_type.label(), true);
+
+    if is_admin {
+        embed = embed.field("Faction Cut", format!("{}%", contract.faction_cut), true);
+    }
+
+    ctx.send(CreateReply::default().embed(embed)).await?;
+
+    Ok(())
+}
+
+/// Fetches the reviving factions' "Name (ID)" labels, both keyed by faction id and as a list.
+async fn fetch_reviver_factions(
+    api: &Arc<Mutex<TornAPI>>,
+    reviving_faction_ids: &[u64],
+) -> Result<(HashMap<u64, String>, Vec<String>), String> {
+    let mut faction_names = HashMap::new();
+    let mut labels = Vec::new();
+
+    for id in reviving_faction_ids {
+        let faction_data = api.lock().await.get_faction_data(*id).await?;
+        let label = faction_label(&faction_data, *id);
+        faction_names.insert(*id, label.clone());
+        labels.push(label);
+    }
+
+    Ok((faction_names, labels))
+}
+
+/// Formats Torn faction data as "Name (ID)".
+fn faction_label(faction_data: &Value, fallback_id: u64) -> String {
+    format!(
+        "{} ({})",
+        faction_data["name"].as_str().unwrap_or("Unknown"),
+        faction_data["ID"].as_u64().unwrap_or(fallback_id)
+    )
 }
 
 fn format_with_commas(number: u64) -> String {

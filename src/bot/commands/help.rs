@@ -62,7 +62,8 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
 
     fields.push((
         "/report".to_string(),
-        "Generate contract report".to_string(),
+        "Generate contract report. For pending contracts, shows the contract setup instead so it can be verified."
+            .to_string(),
         false,
     ));
 
