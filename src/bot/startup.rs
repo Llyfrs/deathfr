@@ -26,7 +26,7 @@ const DEPLOYMENT_MESSAGES: &[&str] = &[
     "Your Rust child is online. Please clap.",
     "I survived another trip through systemd. Barely.",
     "All revives are belong to me again.",
-    "I came back faster than a Lifeline member after a revive notification.",
+    "I came back faster than a Cerberus Alliance member after a revive notification.",
     "Another day, another successful resurrection of Deathfr.",
     "I missed you too. Probably. Hard to tell, I'm a bot.",
     "Do bots dream? I don't know. But I dreamed of you while the binary copied.",

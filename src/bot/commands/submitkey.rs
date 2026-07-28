@@ -159,7 +159,7 @@ pub async fn handle_modal_submit(
     respond_ephemeral(
         ctx,
         modal,
-        "Your API key has been saved and will be used by Lifeline.",
+        "Your API key has been saved and will be used by Cerberus Alliance.",
     )
     .await;
 

@@ -13,7 +13,7 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
 
     fields.push((
         "/reviveme".to_string(),
-        "Ask Lifeline for Revive".to_string(),
+        "Ask Cerberus Alliance for Revive".to_string(),
         false,
     ));
 
@@ -54,7 +54,7 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
     if level >= AccessLevel::FactionGuild {
         fields.push((
             "/stats".to_string(),
-            "Get your personal reviving stats over the course of your career in Lifeline"
+            "Get your personal reviving stats over the course of your career in Cerberus Alliance"
                 .to_string(),
             false,
         ));

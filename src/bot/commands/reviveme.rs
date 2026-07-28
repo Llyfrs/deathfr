@@ -10,7 +10,7 @@ use serenity::all::{
     EditInteractionResponse, EditMessage, MessageBuilder, RoleId,
 };
 
-/// Ask Lifeline for Revive
+/// Ask Cerberus Alliance for Revive
 #[poise::command(slash_command, install_context = "Guild|User")]
 pub async fn reviveme(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();

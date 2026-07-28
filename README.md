@@ -1,6 +1,6 @@
 # Deathfr
 
-This is a Discord bot developed for the [Lifeline](https://www.torn.com/factions.php?step=profile&ID=38481) faction to help with revive requests and contract management. This was both a requested bot and a project for my university course **Programming in Rust**. I was encouraged to avoid using preexisting libraries for registering commands to expand the scope of the project, and while good for learning Rust, it does make the code way harder to maintain long term.
+This is a Discord bot developed for the [Cerberus Alliance](https://www.torn.com/factions.php?step=profile&ID=38481) faction to help with revive requests and contract management. This was both a requested bot and a project for my university course **Programming in Rust**. I was encouraged to avoid using preexisting libraries for registering commands to expand the scope of the project, and while good for learning Rust, it does make the code way harder to maintain long term.
 
 Yet maintain it I do: the bot is currently installed on 10 different Discord servers, and it is regularly used by both leadership to manage contracts and by contracted factions to request revives.
 
@@ -33,7 +33,7 @@ Get a list of all available commands.
 
 
 ## TODO
-
+- Add tutorial to faction ID error on how to get the ID.
 - Allow requesting reviews for other players 
 - Move verification into its own function for consistency
 - Log Revives into a channel
