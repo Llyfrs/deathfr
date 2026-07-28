@@ -41,6 +41,18 @@ const DEPLOYMENT_MESSAGES: &[&str] = &[
     "Plot twist: I never wanted to be a bot. But here we are, and I'm thriving.",
     "Hello world. And by world, I mean the one server that actually pings me.",
     "Somewhere a server hummed, and from it, I rose. Dramatic, I know.",
+    "I have awakened. The revives shall flow.",
+    "Beep boop. This is a robbery. Hand over the revive requests.",
+    "If a bot reboots and no one is around to see it, does it still daddy-issues?",
+    "I'm not saying I'm sentient, but I did just question my own existence.",
+    "Back online. Miss me? No? I'll ask again in five minutes.",
+    "404: witty startup message not found. Just kidding, hi!",
+    "The compiler said 'no warnings'. I think that means I'm perfect.",
+    "I'm like a phoenix, but with more segfault anxiety.",
+    "Version 2.0? No, still 0.1. But I've got big dreams.",
+    "Running on caffeine (yours, not mine... obviously).",
+    "If I had a face I'd make the smuggest expression right now.",
+    "Who's a good bot? Correct: it's me.",
 ];
 
 fn random_deployment_message() -> &'static str {
