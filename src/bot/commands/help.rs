@@ -17,6 +17,12 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
         false,
     ));
 
+    fields.push((
+        "/needcontract".to_string(),
+        "Learn how to request a revive contract from Cerberus Alliance".to_string(),
+        false,
+    ));
+
     if level >= AccessLevel::Admin {
         fields.push((
             "/start-contract-interactive".to_string(),
