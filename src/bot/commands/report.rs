@@ -3,7 +3,7 @@ use crate::bot::data::{Context, Error};
 use crate::bot::tools::get_player_cache::get_player_cache;
 use crate::database::structures::{Contract, ReviveEntry, Status};
 use crate::database::Database;
-use crate::pricing::{classify_revive, ReviveClass, ReviveCounts};
+use crate::pricing::{classify_revive, format_with_commas, ReviveClass, ReviveCounts};
 use crate::torn_api::TornAPI;
 use mongodb::bson::{doc, Bson};
 use poise::CreateReply;
@@ -431,16 +431,6 @@ fn faction_label(name: &str, id: u64) -> String {
     format!("{name} ({id})")
 }
 
-fn format_with_commas(number: u64) -> String {
-    let mut chars: Vec<_> = number.to_string().chars().collect();
-    let len = chars.len();
-    for i in (1..len).rev() {
-        if (len - i) % 3 == 0 {
-            chars.insert(i, ',');
-        }
-    }
-    chars.into_iter().collect()
-}
 
 // https://discord.com/developers/docs/resources/message#embed-object-embed-limits
 const EMBED_DESCRIPTION_LIMIT: usize = 4096;

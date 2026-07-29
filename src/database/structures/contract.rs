@@ -30,6 +30,8 @@ pub struct Contract {
     pub(crate) pricing_type: PricingType,
     #[serde(default)]
     pub(crate) revives_synced: bool,
+    #[serde(default)]
+    pub(crate) money_settled: bool,
 }
 
 

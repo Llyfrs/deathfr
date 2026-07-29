@@ -1,5 +1,6 @@
 use crate::bot::auth::{level_of, AccessLevel};
 use crate::bot::data::{Context, Data, Error};
+use crate::bot::tools::settle_money::settle_contract_money;
 use crate::database::structures::Status;
 use crate::database::Database;
 use crate::pricing::PricingType;
@@ -168,6 +169,7 @@ pub async fn start(
         faction_cut: faction_cut as i64,
         pricing_type,
         revives_synced: false,
+        money_settled: false,
     };
 
     let status_label = match contract.status {
@@ -238,6 +240,59 @@ pub async fn end(
         Database::update(contract.clone(), doc! {"contract_id": contract_id.clone()})
             .await
             .unwrap();
+
+        ctx.defer().await?;
+
+        let reviving_faction_ids = ctx.data().secrets.reviving_faction_ids();
+
+        let settled = settle_contract_money(&contract, &reviving_faction_ids).await;
+        if let Err(e) = &settled {
+            log::error!("Failed to settle money for contract {}: {e:#}", contract.contract_id);
+        }
+
+        let mut updated_contract = contract.clone();
+        updated_contract.money_settled = true;
+        Database::update(updated_contract, doc! {"contract_id": contract_id.clone()})
+            .await
+            .unwrap();
+
+        let unsettled: Vec<crate::database::structures::Contract> =
+            Database::get_collection_with_filter(Some(doc! {
+                "status": bson::to_bson(&Status::Ended).unwrap(),
+                "money_settled": { "$ne": true },
+                "contract_id": { "$ne": &contract.contract_id }
+            }))
+            .await
+            .unwrap();
+
+        let mut backfill_count = 0u64;
+        for old_contract in &unsettled {
+            match settle_contract_money(old_contract, &reviving_faction_ids).await {
+                Ok(count) => {
+                    backfill_count += count;
+                    let mut c = old_contract.clone();
+                    c.money_settled = true;
+                    Database::update(c, doc! {"contract_id": old_contract.contract_id.clone()})
+                        .await
+                        .unwrap();
+                }
+                Err(e) => {
+                    log::error!(
+                        "Failed to settle money for old contract {}: {e:#}",
+                        old_contract.contract_id
+                    );
+                }
+            }
+        }
+
+        if backfill_count > 0 {
+            log::info!("Backfilled money for {} revives across {} old contracts", backfill_count, unsettled.len());
+        }
+
+        match &settled {
+            Ok(n) => log::info!("Settled money for {n} revives under contract {}", contract.contract_id),
+            Err(e) => log::error!("Money settlement failed for contract {}: {e:#}", contract.contract_id),
+        }
 
         message = MessageBuilder::new()
             .push(format!(

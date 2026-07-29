@@ -3,6 +3,7 @@ use crate::bot::data::{Context, Error};
 use crate::bot::tools::resolve_discord_verification::resolve_discord_verification;
 use crate::database::structures::ReviveEntry;
 use crate::database::Database;
+use crate::pricing::format_with_commas;
 use mongodb::bson::doc;
 use poise::CreateReply;
 use serenity::all::CreateEmbed;
@@ -63,11 +64,13 @@ pub async fn stats(ctx: Context<'_>) -> Result<(), Error> {
     let avg_chance =
         revives.iter().map(|revive| revive.chance).sum::<f32>() / total_revives as f32;
 
+    let total_money: u64 = revives.iter().map(|revive| revive.money_made).sum();
+
     let embed = CreateEmbed::default()
         .title("Revive Stats")
         .field("Total Revives", total_revives.to_string(), true)
         .field("Average Chance", format!("{:.2}%", avg_chance), true)
-        .field("", "", true)
+        .field("Total Money Made", format!("${}", format_with_commas(total_money)), true)
         .field("Success", successful_revives.to_string(), true)
         .field("Failed", failed_revives.to_string(), true)
         .field(

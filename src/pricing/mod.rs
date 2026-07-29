@@ -31,7 +31,7 @@ pub struct PriceBreakdown {
 }
 
 impl PricingType {
-    fn success_rate(self) -> u64 {
+    pub fn success_rate(self) -> u64 {
         match self {
             Self::Legacy => 900_000,
             Self::External => 1_000_000,
@@ -39,7 +39,7 @@ impl PricingType {
         }
     }
 
-    fn failed_rate(self) -> u64 {
+    pub fn failed_rate(self) -> u64 {
         match self {
             Self::Legacy => 1_000_000,
             Self::External => 750_000,
@@ -84,4 +84,15 @@ pub fn classify_revive(revive: &ReviveEntry, min_chance: u64) -> ReviveClass {
     } else {
         ReviveClass::Ignored
     }
+}
+
+pub fn format_with_commas(number: u64) -> String {
+    let mut chars: Vec<_> = number.to_string().chars().collect();
+    let len = chars.len();
+    for i in (1..len).rev() {
+        if (len - i) % 3 == 0 {
+            chars.insert(i, ',');
+        }
+    }
+    chars.into_iter().collect()
 }

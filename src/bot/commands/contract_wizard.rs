@@ -565,6 +565,7 @@ async fn confirm_and_create(
         faction_cut: faction_cut as i64,
         pricing_type,
         revives_synced: false,
+        money_settled: false,
     };
 
     let status_label = match contract.status {

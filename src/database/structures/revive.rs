@@ -20,6 +20,7 @@ impl From<ReviveSimplified> for ReviveEntry {
                 timestamp: r.target.last_action as u64,
                 status: r.target.online_status,
             },
+            money_made: 0,
         }
     }
 }
@@ -37,6 +38,8 @@ pub struct ReviveEntry {
     pub target_hospital_reason: String,
     pub target_early_discharge: bool,
     pub target_last_action: TargetLastAction,
+    #[serde(default)]
+    pub money_made: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

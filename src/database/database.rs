@@ -255,6 +255,17 @@ impl Database {
         Ok(())
     }
 
+    pub async fn update_doc<T>(filter: Document, update: Document) -> Result<()>
+    where
+        T: CollectionName + DatabaseName + Sync + Send,
+    {
+        let client = Database::get().await.unwrap();
+        let db = client.database(T::database_name());
+        let collection: Collection<Document> = db.collection(T::collection_name());
+        collection.update_one(filter, update).await?;
+        Ok(())
+    }
+
     pub async fn set_value<T>(key: &str, value: T) -> Result<()>
     where
         T: serde::Serialize,
