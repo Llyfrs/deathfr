@@ -3,7 +3,7 @@ use poise::CreateReply;
 
 /// Learn how to request a revive contract from Cerberus Alliance
 #[poise::command(slash_command, install_context = "Guild|User")]
-pub async fn needcontract(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn new_contract(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send(
         CreateReply::default().content(
             "**How to request a contract**\n\

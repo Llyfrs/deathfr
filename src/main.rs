@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::report::report(),
                 commands::submitkey::submitkey(),
                 commands::help::help(),
-                commands::needcontract::needcontract(),
+                commands::new_contract::new_contract(),
             ],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
                     commands::reviveme::reviveme(),
                     commands::report::report(),
                     commands::help::help(),
-                    commands::needcontract::needcontract(),
+                    commands::new_contract::new_contract(),
                 ]);
 
                 let guild_commands = poise::builtins::create_application_commands(&[

@@ -18,7 +18,7 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
     ));
 
     fields.push((
-        "/needcontract".to_string(),
+        "/new-contract".to_string(),
         "Learn how to request a revive contract from Cerberus Alliance".to_string(),
         false,
     ));
