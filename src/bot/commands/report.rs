@@ -63,20 +63,36 @@ pub async fn report(
             )
             .await?;
 
-        if let Err(e) = ctx
+        log::info!(
+            "Report for contract {}: starting revive sync (ended={})",
+            contract_id, contract.ended
+        );
+        match ctx
             .data()
             .revive_monitor
             .sync_for_contract(contract.ended)
             .await
         {
-            status
-                .edit(
-                    ctx,
-                    CreateReply::default()
-                        .content(format!("Failed to sync revive data: {e:#}")),
-                )
-                .await?;
-            return Ok(());
+            Ok(result) => {
+                log::info!(
+                    "Report for contract {}: revive sync complete — inserted={}, has_backlog={}",
+                    contract_id, result.total_inserted, result.has_backlog
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "Report for contract {}: revive sync failed: {e:#}",
+                    contract_id
+                );
+                status
+                    .edit(
+                        ctx,
+                        CreateReply::default()
+                            .content(format!("Failed to sync revive data: {e:#}")),
+                    )
+                    .await?;
+                return Ok(());
+            }
         }
 
         contract.revives_synced = true;
@@ -95,6 +111,7 @@ pub async fn report(
         .map(|id| Bson::Int64(*id as i64))
         .collect();
 
+    log::info!("Report for contract {}: querying revives from database", contract_id);
     let revives = Database::get_collection_with_filter::<ReviveEntry>(Some(doc! {
         "timestamp": {
             "$gte": Bson::Int64(contract.started as i64),
@@ -105,6 +122,7 @@ pub async fn report(
     }))
     .await
     .unwrap();
+    log::info!("Report for contract {}: fetched {} revives from database", contract_id, revives.len());
 
     let mut per_faction_player: HashMap<(u64, u64), Vec<ReviveEntry>> = HashMap::new();
     let mut successful = 0;
@@ -126,6 +144,7 @@ pub async fn report(
 
     let api = ctx.data().torn_api.clone();
 
+    log::info!("Report for contract {}: fetching target faction data (faction_id={})", contract_id, contract.faction_id);
     let faction_data_target = match api
         .get_faction_basic(FactionId::new(contract.faction_id as i32))
         .await
@@ -133,6 +152,7 @@ pub async fn report(
         Ok(data) => data,
         Err(e) => {
             let message = format!("Failed to fetch faction data from Torn: {e:#}");
+            log::error!("Report for contract {}: {message}", contract_id);
             if let Some(status) = syncing_status {
                 status.delete(ctx).await?;
             }
@@ -146,11 +166,13 @@ pub async fn report(
         }
     };
 
+    log::info!("Report for contract {}: fetching reviver faction data", contract_id);
     let (faction_names, reviver_faction_labels) =
         match fetch_reviver_factions(&api, &reviving_faction_ids).await {
             Ok(data) => data,
             Err(e) => {
                 let message = format!("Failed to fetch faction data from Torn: {e:#}");
+                log::error!("Report for contract {}: {message}", contract_id);
                 if let Some(status) = syncing_status {
                     status.delete(ctx).await?;
                 }
@@ -240,11 +262,22 @@ pub async fn report(
 
     let mut per_faction_rewards: HashMap<u64, Vec<(u64, String)>> = HashMap::new();
 
+    let player_count = per_faction_player.len();
+    log::info!("Report for contract {}: computing rewards for {player_count} players", contract_id);
+    let mut processed = 0u32;
+
     for ((faction_id, player_id), entries) in &per_faction_player {
-        // TODO: caching system for revive skill to avoid rate limits on large reports
+        processed += 1;
+        log::debug!(
+            "Report for contract {}: fetching player data for {player_id} ({processed}/{player_count})",
+            contract_id
+        );
         let player_data = match get_player_cache(*player_id, &api).await {
             Some(player) => player,
-            None => continue,
+            None => {
+                log::warn!("Report for contract {}: no player data for {player_id}, skipping", contract_id);
+                continue;
+            }
         };
 
         let mut success = 0u64;

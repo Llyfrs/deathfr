@@ -94,11 +94,11 @@ impl ReviveMonitor {
         let has_backlog = len > 900;
 
         if len > 0 {
-            let last_timestamp = revives.last().unwrap().timestamp;
+            let newest_timestamp = revives.first().unwrap().timestamp;
             Database::insert_manny(revives).await?;
-            Self::set_last_revive(primary_faction, last_timestamp).await?;
+            Self::set_last_revive(primary_faction, newest_timestamp).await?;
             log::info!(
-                "Collected {len} revives for faction {primary_faction}, last revive: {last_timestamp}"
+                "Collected {len} revives for faction {primary_faction}, newest revive: {newest_timestamp}"
             );
         } else {
             log::info!("No new revives found for faction {primary_faction}.");
@@ -136,10 +136,19 @@ impl ReviveMonitor {
         })
     }
 
-    pub async fn sync_for_contract(&self, _contract_ended: u64) -> anyhow::Result<SyncResult> {
+    pub async fn sync_for_contract(&self, contract_ended: u64) -> anyhow::Result<SyncResult> {
+        log::info!("sync_for_contract: starting sync loop for contract_ended={contract_ended}");
+        let mut iteration = 0u32;
         loop {
+            iteration += 1;
+            log::info!("sync_for_contract: iteration {iteration}, acquiring sync lock…");
             let result = self.sync_once().await?;
+            log::info!(
+                "sync_for_contract: iteration {iteration} done — inserted={}, has_backlog={}",
+                result.total_inserted, result.has_backlog
+            );
             if result.total_inserted == 0 || !result.has_backlog {
+                log::info!("sync_for_contract: finished after {iteration} iteration(s)");
                 return Ok(result);
             }
         }
