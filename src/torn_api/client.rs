@@ -6,6 +6,7 @@ use torn_api::executor::{Executor, ExecutorExt};
 use torn_api::request::{ApiResponse, IntoRequest};
 use torn_api::{ApiError, Error as TornError};
 use torn_api::models::{FactionBasicResponse, FactionId, RevivesFullResponse, UserBasicResponse, UserDiscordPathId, UserProfileResponse};
+use torn_api::parameters::ApiSortDesc;
 
 /// A single Torn API key in the rotation pool.
 #[derive(Clone)]
@@ -192,7 +193,9 @@ impl TornAPI {
 
     /// Fetch the key owner faction's simplified revives since `from`.
     pub async fn get_revives_full(&self, from: u64) -> Result<RevivesFullResponse, TornError> {
-        self.faction().revives_full(|b| b.api_from(from as i32)).await
+        self.faction()
+            .revives_full(|b| b.api_from(from as i32).api_sort_desc(ApiSortDesc::Asc))
+            .await
     }
 }
 

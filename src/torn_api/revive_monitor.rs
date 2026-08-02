@@ -94,7 +94,7 @@ impl ReviveMonitor {
         let has_backlog = len > 900;
 
         if len > 0 {
-            let newest_timestamp = revives.first().unwrap().timestamp;
+            let newest_timestamp = revives.last().unwrap().timestamp;
             Database::insert_manny(revives).await?;
             Self::set_last_revive(primary_faction, newest_timestamp).await?;
             log::info!(
