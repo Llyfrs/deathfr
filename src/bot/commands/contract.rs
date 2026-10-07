@@ -1,5 +1,6 @@
 use crate::bot::auth::{level_of, AccessLevel};
 use crate::bot::data::{Context, Data, Error};
+use crate::bot::tools::promote_pending::promote_pending_contracts;
 use crate::bot::tools::settle_money::settle_contract_money;
 use crate::database::structures::Status;
 use crate::database::Database;
@@ -191,6 +192,7 @@ pub async fn start(
         .build();
 
     Database::insert(contract).await.unwrap();
+    ctx.data().live_board.request_refresh();
 
     ctx.send(CreateReply::default().content(message).ephemeral(true))
         .await?;
@@ -240,6 +242,7 @@ pub async fn end(
         Database::update(contract.clone(), doc! {"contract_id": contract_id.clone()})
             .await
             .unwrap();
+        ctx.data().live_board.request_refresh();
 
         ctx.defer().await?;
 
@@ -408,7 +411,9 @@ async fn create_page(
     page_size: u64,
     filter: Option<Document>,
 ) -> (String, CreateEmbed, Vec<CreateActionRow>) {
-    promote_pending_contracts().await;
+    if let Err(e) = promote_pending_contracts().await {
+        log::error!("Failed to promote pending contracts: {e:#}");
+    }
 
     let size = Database::get_collection_size(filter.clone()).await.unwrap();
 
@@ -491,25 +496,6 @@ async fn create_page(
     };
 
     ("List of contracts".to_string(), embed, components)
-}
-
-async fn promote_pending_contracts() {
-    let pending_contracts = Database::get_collection_with_filter::<crate::database::structures::Contract>(Some(
-        doc! {"status": bson::to_bson(&Status::Pending).unwrap()}
-    ))
-    .await
-    .unwrap();
-
-    let now = Utc::now().timestamp() as u64;
-
-    for mut contract in pending_contracts {
-        if contract.started <= now {
-            contract.status = Status::Active;
-            Database::update(contract.clone(), doc! {"contract_id": contract.contract_id.clone()})
-                .await
-                .unwrap();
-        }
-    }
 }
 
 fn parse_contract_start_time(start_time: &str) -> Result<DateTime<Utc>, String> {

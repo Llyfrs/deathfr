@@ -6,10 +6,11 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use serde::Deserialize;
 use serenity::all::{CommandInteraction, Message, MessageId, UserId};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 use crate::bot::commands::contract::ListMessageInfo;
 use crate::bot::commands::contract_wizard::ContractWizardState;
+use crate::bot::live_board::LiveBoard;
 use crate::torn_api::{ReviveMonitor, ReviveSourceConfig, TornAPI};
 
 /// Everything read from the secrets TOML file at startup.
@@ -209,6 +210,8 @@ pub struct Data {
     pub secrets: Secrets,
     pub torn_api: Arc<TornAPI>,
     pub revive_monitor: Arc<ReviveMonitor>,
+    /// Live contract channel maintainer
+    pub live_board: Arc<LiveBoard>,
     /// Map of messages sent to the reviver channel, keyed by the user that asked for a revive
     pub revive_responses: Mutex<HashMap<UserId, Message>>,
     /// Map of the original /reviveme interactions, keyed by the reviver-channel message id
@@ -220,11 +223,23 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn new(secrets: Secrets, torn_api: TornAPI, revive_monitor: Arc<ReviveMonitor>) -> Self {
+    pub fn new(
+        secrets: Secrets,
+        torn_api: TornAPI,
+        revive_monitor: Arc<ReviveMonitor>,
+        live_board_notify: Arc<Notify>,
+    ) -> Self {
+        let torn_api = Arc::new(torn_api);
+        let live_board = Arc::new(LiveBoard::new(
+            torn_api.clone(),
+            secrets.reviving_faction_ids(),
+            live_board_notify,
+        ));
         Self {
             secrets,
-            torn_api: Arc::new(torn_api),
+            torn_api,
             revive_monitor,
+            live_board,
             revive_responses: Mutex::new(HashMap::new()),
             revive_cancellations: Mutex::new(HashMap::new()),
             contract_pages: Mutex::new(HashMap::new()),

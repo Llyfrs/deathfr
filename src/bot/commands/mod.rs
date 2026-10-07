@@ -1,6 +1,7 @@
 pub mod contract;
 pub mod contract_wizard;
 pub mod help;
+pub mod live_channel;
 pub mod new_contract;
 pub mod report;
 pub mod reviveme;

@@ -57,6 +57,19 @@ pub async fn help(ctx: Context<'_>) -> Result<(), Error> {
         ));
     }
 
+    if level >= AccessLevel::Admin {
+        fields.push((
+            "/live-channel".to_string(),
+            "Keeps a dedicated channel filled with all active and upcoming contracts, with live statistics \
+             that update after every revive sync (about hourly). Anything else posted in that channel is deleted. \n\
+             * `set` picks the channel (one per server; messages already in it are left alone) \n\
+             * `disable` stops it and removes the board messages \n\
+             * `refresh` updates it right away"
+                .to_string(),
+            false,
+        ));
+    }
+
     if level >= AccessLevel::FactionGuild {
         fields.push((
             "/stats".to_string(),

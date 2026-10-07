@@ -21,6 +21,13 @@ Ends a contract. Takes `contract_id` as an argument. Contract ID is returned whe
 `/contract list`  
 Lists all contracts. Takes `status` as an argument. Status can be active, ended, or all. Contracts are separated into pages by 10.
 
+`/live-channel set|disable|refresh`  
+Admin only. Turns a channel into a live board of all active and upcoming contracts (one per server):
+- One message per contract, sorted chronologically (running contracts first, then upcoming ones by start time), plus a header message.
+- Active contracts show live statistics: successful / failed revives, success rate, average chance, running total and top revivers. They update after every revive sync (roughly hourly), and immediately when contracts are created, started or ended.
+- The bot keeps the channel clean: anything else posted after the channel was set gets deleted. Messages from before are left alone.
+- Required permissions in the channel: View Channel, Send Messages, Embed Links, Read Message History and Manage Messages. Making the channel read-only for everyone else is recommended.
+
 `/report`  
 Generate contract report.
 
