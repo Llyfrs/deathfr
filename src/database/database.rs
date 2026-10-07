@@ -33,7 +33,7 @@ impl Database {
 
     pub async fn ensure_indexes() -> Result<()> {
         use crate::database::structures::{
-            Contract, IndexSetup, PlayerCache, ReviveEntry, Verification,
+            Contract, IndexSetup, LiveChannel, PlayerCache, ReviveEntry, Verification,
         };
 
         let client = Database::get().await.unwrap();
@@ -42,6 +42,7 @@ impl Database {
         PlayerCache::ensure_indexes(&client).await?;
         ReviveEntry::ensure_indexes(&client).await?;
         Verification::ensure_indexes(&client).await?;
+        LiveChannel::ensure_indexes(&client).await?;
 
         Ok(())
     }
@@ -263,6 +264,29 @@ impl Database {
         let db = client.database(T::database_name());
         let collection: Collection<Document> = db.collection(T::collection_name());
         collection.update_one(filter, update).await?;
+        Ok(())
+    }
+
+    /// Replaces the document matching `filter`, inserting it when there is none.
+    pub async fn replace_upsert<T>(document: &T, filter: Document) -> Result<()>
+    where
+        T: CollectionName + serde::Serialize + Unpin + 'static + DatabaseName + Sync + Send,
+    {
+        let client = Database::get().await.unwrap();
+        let db = client.database(T::database_name());
+        let collection = db.collection::<T>(T::collection_name());
+        collection.replace_one(filter, document).upsert(true).await?;
+        Ok(())
+    }
+
+    pub async fn delete_one<T>(filter: Document) -> Result<()>
+    where
+        T: CollectionName + DatabaseName + Sync + Send,
+    {
+        let client = Database::get().await.unwrap();
+        let db = client.database(T::database_name());
+        let collection: Collection<Document> = db.collection(T::collection_name());
+        collection.delete_one(filter).await?;
         Ok(())
     }
 

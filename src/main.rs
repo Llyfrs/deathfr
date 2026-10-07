@@ -73,8 +73,10 @@ async fn main() -> anyhow::Result<()> {
         secret.revive_sources.clone()
     };
 
-    let revive_monitor = Arc::new(ReviveMonitor::new(revive_sources));
-    let data = Data::new(secret.clone(), api, revive_monitor.clone());
+    // Wakes the live board whenever revives were synced or contracts changed.
+    let live_board_notify = Arc::new(tokio::sync::Notify::new());
+    let revive_monitor = Arc::new(ReviveMonitor::new(revive_sources, live_board_notify.clone()));
+    let data = Data::new(secret.clone(), api, revive_monitor.clone(), live_board_notify);
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -87,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::submitkey::submitkey(),
                 commands::help::help(),
                 commands::new_contract::new_contract(),
+                commands::live_channel::live_channel(),
             ],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
@@ -130,6 +133,7 @@ async fn main() -> anyhow::Result<()> {
                     commands::contract_wizard::start_contract_interactive(),
                     commands::stats::stats(),
                     commands::submitkey::submitkey(),
+                    commands::live_channel::live_channel(),
                 ]);
 
                 serenity::all::Command::set_global_commands(&ctx.http, global_commands).await?;
@@ -147,6 +151,14 @@ async fn main() -> anyhow::Result<()> {
                     }
                 });
 
+                tokio::spawn({
+                    let live_board = data.live_board.clone();
+                    let http = ctx.http.clone();
+                    async move {
+                        live_board.run_loop(http).await;
+                    }
+                });
+
                 log::info!("The bot is ready to go!");
 
                 if let Err(e) = bot::startup::notify_startup(&ctx, secrets).await {
@@ -161,7 +173,8 @@ async fn main() -> anyhow::Result<()> {
     let token = loaded.discord_token;
 
     // Set gateway intents, which decides what events the bot will be notified about
-    let intents = GatewayIntents::GUILDS;
+    // GUILD_MESSAGES (not privileged) lets the live channel delete foreign messages right away.
+    let intents = GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES;
 
     let mut client = Client::builder(&token, intents)
         .framework(framework)

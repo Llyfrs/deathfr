@@ -2,6 +2,7 @@ use serenity::all::{FullEvent, Interaction};
 
 use crate::bot::commands::{contract, contract_wizard, reviveme, submitkey};
 use crate::bot::data::{Data, Error};
+use crate::bot::live_board;
 
 /// Handles everything poise does not route itself: component/modal interactions
 /// belonging to the commands.
@@ -41,6 +42,29 @@ pub async fn event_handler(
             }
             _ => {}
         },
+        FullEvent::Message { new_message } => {
+            live_board::handle_message(ctx, &data.live_board, new_message).await;
+        }
+        FullEvent::MessageDelete {
+            channel_id,
+            deleted_message_id,
+            ..
+        } => {
+            live_board::handle_messages_deleted(&data.live_board, *channel_id, &[*deleted_message_id])
+                .await;
+        }
+        FullEvent::MessageDeleteBulk {
+            channel_id,
+            multiple_deleted_messages_ids,
+            ..
+        } => {
+            live_board::handle_messages_deleted(
+                &data.live_board,
+                *channel_id,
+                multiple_deleted_messages_ids,
+            )
+            .await;
+        }
         _ => {}
     }
 

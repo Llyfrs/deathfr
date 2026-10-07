@@ -589,6 +589,7 @@ async fn confirm_and_create(
         .build();
 
     Database::insert(contract).await.unwrap();
+    data.live_board.request_refresh();
 
     data.contract_wizards.lock().await.remove(&component.message.id);
 

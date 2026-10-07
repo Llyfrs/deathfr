@@ -27,10 +27,12 @@ pub struct SyncResult {
 pub struct ReviveMonitor {
     sources: Vec<ReviveSource>,
     sync_lock: tokio::sync::Mutex<()>,
+    /// Signalled after every sync so dependents (the live board) can refresh.
+    synced: Arc<tokio::sync::Notify>,
 }
 
 impl ReviveMonitor {
-    pub fn new(configs: Vec<ReviveSourceConfig>) -> Self {
+    pub fn new(configs: Vec<ReviveSourceConfig>, synced: Arc<tokio::sync::Notify>) -> Self {
         let sources = configs
             .into_iter()
             .map(|config| {
@@ -49,6 +51,7 @@ impl ReviveMonitor {
         Self {
             sources,
             sync_lock: tokio::sync::Mutex::new(()),
+            synced,
         }
     }
 
@@ -129,6 +132,7 @@ impl ReviveMonitor {
         }
 
         Database::set_value("last_update", chrono::Utc::now().timestamp()).await?;
+        self.synced.notify_one();
 
         Ok(SyncResult {
             total_inserted,
